@@ -3,6 +3,8 @@
     python -m commu_aid                  # Tobii Pro Spark, calibration at start-up
     python -m commu_aid --mouse          # no tracker: the mouse pointer stands in for gaze
     python -m commu_aid --mouse --calibration-demo   # rehearse the calibration screen with the mouse
+    python -m commu_aid --simulate       # mouse plus realistic gaze jitter, offset, blinks and dropouts
+    python -m commu_aid --simulate hard  # mild, typical (default) or hard
 """
 
 from __future__ import annotations
@@ -19,6 +21,12 @@ def parse_args(argv=None):
     ap = argparse.ArgumentParser(prog="commu_aid", description="Eye-tracking communication aid")
     ap.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="settings file (default: config.yaml)")
     ap.add_argument("--mouse", action="store_true", help="use the mouse instead of the eye tracker")
+    ap.add_argument(
+        "--simulate", nargs="?", const="typical", choices=("mild", "typical", "hard"), metavar="LEVEL",
+        help="simulated eye tracker: the mouse with gaze jitter, offset, blinks and dropouts "
+        "(LEVEL: mild, typical or hard; default typical). Implies --mouse",
+    )
+    ap.add_argument("--sim-seed", type=int, help="with --simulate: repeat the same random jitter and blinks")
     ap.add_argument("--calibration-demo", action="store_true", help="with --mouse: show a pretend calibration")
     ap.add_argument("--skip-calibration", action="store_true", help="use the saved calibration instead")
     ap.add_argument("--windowed", action="store_true", help="open in a window instead of full screen")
@@ -45,8 +53,15 @@ def main(argv=None) -> int:
     app.setApplicationName("Communication Aid")
     cfg = load_config(args.config)
 
-    if args.mouse:
+    if args.mouse or args.simulate:
         source = MouseDemoCalibrationSource() if args.calibration_demo else MouseGazeSource()
+        if args.simulate:
+            from .gaze.simulated_source import PROFILES, SimulatedGazeSource
+
+            source = SimulatedGazeSource(
+                source, PROFILES[args.simulate], (cfg.display.width, cfg.display.height), seed=args.sim_seed
+            )
+            logging.info("Simulated eye tracker (%s)", args.simulate)
     else:
         try:
             from .gaze.tobii_source import TobiiGazeSource

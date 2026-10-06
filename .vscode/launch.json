@@ -23,6 +23,14 @@
       "module": "commu_aid",
       "args": ["--mouse", "--windowed", "--calibration-demo"],
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Communication Aid (simulated eye tracker)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "commu_aid",
+      "args": ["--simulate", "--windowed"],
+      "cwd": "${workspaceFolder}"
     }
   ]
 }
