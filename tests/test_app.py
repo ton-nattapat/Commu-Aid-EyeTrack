@@ -209,6 +209,27 @@ def test_settings_save_changes_dwell_and_tiles(setup, app, tmp_path):
     assert "Water" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
 
 
+def test_needs_tile_still_selected_with_simulated_gaze(app, monkeypatch, tmp_path):
+    """Typical jitter, offset, blinks and dropouts must not stop a steady look from selecting a tile."""
+    from commu_aid.gaze.simulated_source import PROFILES, SimulatedGazeSource
+
+    clock = Clock()
+    monkeypatch.setattr(main_window.time, "monotonic", clock)
+    monkeypatch.setattr(main_window, "DATA_DIR", tmp_path)
+    cfg = load_config(ROOT / "config.yaml")
+    target = ScriptedGaze(clock)
+    source = SimulatedGazeSource(target, PROFILES["typical"], (1920, 1080), seed=3, clock=clock)
+    speaker = FakeSpeaker()
+    w = main_window.MainWindow(cfg, source, speaker, FakeTranslator(), FakeSounds())
+    w.resize(1920, 1080)
+    w.show()
+    app.processEvents()
+    w._timer.stop()
+    look_at(w, target, button(w.needs_page, ("need", 0)))
+    dwell(w, clock, app, 8.0)
+    assert speaker.spoken and speaker.spoken[0] == ("ผมหิวน้ำครับ", "th")
+
+
 def test_word_prediction_finishes_the_word(setup, app):
     make, clock, source, speaker, _ = setup
     w = make()

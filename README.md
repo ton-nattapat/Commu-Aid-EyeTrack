@@ -62,6 +62,7 @@ To start again from scratch: `conda env remove -n commu-aid`, then create it aga
    - Communication Aid (mouse, windowed)
    - Communication Aid (Tobii Pro Spark)
    - Communication Aid (calibration demo with mouse)
+   - Communication Aid (simulated eye tracker)
 6. The tests show up in the **Testing** panel (the flask icon).
 
 If VS Code's terminal still shows `(base)`, run `conda activate commu-aid` in it once.
@@ -96,8 +97,28 @@ From the project folder, with the environment active (`conda activate commu-aid`
 python -m commu_aid                      # Tobii Pro Spark, calibration at start-up
 python -m commu_aid --mouse --windowed   # no tracker: the mouse stands in for gaze
 python -m commu_aid --mouse --calibration-demo   # rehearse the calibration screen with the mouse
+python -m commu_aid --simulate --windowed        # simulated eye tracker (see below)
 python -m commu_aid --skip-calibration   # use the last saved calibration
 ```
+
+### Simulated eye tracker
+
+`--simulate` still follows the mouse, but makes it behave like real gaze from the Pro Spark:
+the point shakes all the time, sits a little off target and slowly drifts, holds still on small
+movements and jumps on large ones, drops out on blinks (about 15 a minute) and on short losses
+of tracking, and now and then gives a wild sample. Use it to try dwell time, blink grace and
+cooldown settings before the tracker is available.
+
+```bash
+python -m commu_aid --simulate --windowed          # typical bedside conditions
+python -m commu_aid --simulate mild --windowed     # close to the tracker's specification
+python -m commu_aid --simulate hard --windowed     # tired patient, glasses, poor light
+python -m commu_aid --simulate --sim-seed 1        # repeat the same jitter and blinks every run
+python -m commu_aid --simulate --calibration-demo  # with the pretend calibration screen
+```
+
+Press Ctrl+G to see the gaze dot. The levels are defined in
+[`commu_aid/gaze/simulated_source.py`](commu_aid/gaze/simulated_source.py).
 
 Caregiver keys:
 
@@ -137,6 +158,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Dwell engine ─▶
 | --- | --- |
 | `commu_aid/gaze/tobii_source.py` | Tobii SDK: gaze stream, user position, calibration |
 | `commu_aid/gaze/mouse_source.py` | Mouse as fake gaze for development |
+| `commu_aid/gaze/simulated_source.py` | Simulated tracker: mouse plus jitter, offset, blinks, dropouts |
 | `commu_aid/gaze/filters.py` | Combine both eyes, moving-average smoothing |
 | `commu_aid/dwell.py` | Dwell state machine (no UI code, unit tested) |
 | `commu_aid/ui/main_window.py` | Full-screen window, gaze loop, page switching |
