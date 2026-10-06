@@ -263,3 +263,26 @@ def test_keyboard_targets_stay_large(setup):
     w = setup[0]()
     for b in w.keyboard_page.buttons:
         assert min(b.width(), b.height()) >= 110, b.key
+
+
+def test_buttons_stay_clear_of_the_screen_edges(setup):
+    w = setup[0]()
+    d = w.cfg.display
+    for page in (w.needs_page, w.keyboard_page):
+        for b in page.buttons:
+            left = page.x() + b.x()
+            assert left >= d.side_margin_px and left + b.width() <= 1920 - d.side_margin_px, b.key
+            assert page.y() + b.y() + b.height() <= 1080 - d.bottom_margin_px, b.key
+
+
+def test_gaze_just_past_the_bottom_edge_still_selects(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    space = button(w.keyboard_page, "space")
+    look_at(w, source, space)
+    x, y = source.point
+    source.point = (x, y + (space.height() / 2 + 25) / 1080)  # 25 px below the key, towards the tracker
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "HI "

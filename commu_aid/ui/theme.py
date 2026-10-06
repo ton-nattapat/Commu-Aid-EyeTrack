@@ -1,5 +1,7 @@
 """Colours and sizes shared by every screen. The layout is fixed at 1920x1080."""
 
+from typing import Tuple
+
 from PySide6.QtGui import QColor, QFont
 
 CANVAS_W = 1920
@@ -11,7 +13,21 @@ MIN_TARGET = 110  # at least 3 cm
 BAR_Y = 36
 BAR_H = 200
 GRID_TOP = BAR_Y + BAR_H + GAP
-GRID_BOTTOM = CANVAS_H - GAP
+
+# The keyboard (10 keys across, 5 rows) is the densest page; these limits keep its keys >= MIN_TARGET.
+MAX_SIDE_MARGIN = (CANVAS_W - 9 * GAP - 10 * MIN_TARGET) // 2
+MAX_BOTTOM_MARGIN = CANVAS_H - GRID_TOP - 4 * GAP - 5 * MIN_TARGET
+
+
+def content_area(side_margin: float = MARGIN, bottom_margin: float = GAP) -> Tuple[int, int, int, int]:
+    """Left, top, width, height of the button area, kept clear of the screen edges by the given margins.
+
+    Tobii trackers are least accurate near the edges, worst at the bottom next to the tracker, so
+    buttons stay inside this area. Margins are clamped so every target stays at least MIN_TARGET.
+    """
+    side = int(min(max(side_margin, 0), MAX_SIDE_MARGIN))
+    bottom = int(min(max(bottom_margin, 0), MAX_BOTTOM_MARGIN))
+    return side, GRID_TOP, CANVAS_W - 2 * side, CANVAS_H - bottom - GRID_TOP
 
 BACKGROUND = QColor("#101418")
 SURFACE = QColor("#1e252d")

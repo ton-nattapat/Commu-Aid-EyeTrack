@@ -26,6 +26,7 @@ from ..gaze.filters import GazeSmoother
 from ..gaze.source import GazeSample, GazeSource
 from ..predict import Predictor
 from ..speech import Speaker
+from ..targets import pick_target
 from ..translate import TranslationError, Translator
 from . import theme
 from .calibration import CalibrationScreen
@@ -82,11 +83,14 @@ class MainWindow(QGraphicsView):
         self.bar = MessageBar(self.canvas)
         self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, theme.CANVAS_W - 2 * theme.MARGIN, theme.BAR_H)
 
-        self.needs_page = NeedsPage(cfg.needs, self._on_need, lambda: self.show_page(self.keyboard_page), self.canvas)
+        area = theme.content_area(cfg.display.side_margin_px, cfg.display.bottom_margin_px)
+        self.needs_page = NeedsPage(
+            cfg.needs, self._on_need, lambda: self.show_page(self.keyboard_page), area, self.canvas
+        )
         self.predictor = Predictor(DATA_DIR / "words.json", extra_words=[n.label for n in cfg.needs])
         self.keyboard_page = KeyboardPage(
             self._on_letter, self._on_word, self._on_delete, self._on_clear, self._on_speak,
-            lambda: self.show_page(self.needs_page), self.canvas,
+            lambda: self.show_page(self.needs_page), area, self.canvas,
         )
         self.page: Page = self.needs_page
         self.keyboard_page.hide()
@@ -170,11 +174,9 @@ class MainWindow(QGraphicsView):
 
         target = None
         if point is not None:
-            local = point.toPoint() - self.page.pos()
-            for b in self.page.buttons:
-                if not b.isHidden() and b.geometry().contains(local):
-                    target = b.key
-                    break
+            x, y = point.x() - self.page.x(), point.y() - self.page.y()
+            rects = ((b.key, (b.x(), b.y(), b.width(), b.height())) for b in self.page.buttons if not b.isHidden())
+            target = pick_target(x, y, rects, self.cfg.display.snap_px)
 
         update = self.dwell.update(target, now)
         selected = None
@@ -288,7 +290,8 @@ class MainWindow(QGraphicsView):
             return
         self.close_settings()
         self.calibration = CalibrationScreen(
-            self.source, self.map_to_canvas, self.cfg.calibration.auto_accept_max_error_px, self.canvas
+            self.source, self.map_to_canvas, self.cfg.calibration.auto_accept_max_error_px,
+            self.cfg.calibration.redo_point_px, self.canvas,
         )
         self.calibration.finished.connect(self._on_calibration_finished)
         self.calibration.show()

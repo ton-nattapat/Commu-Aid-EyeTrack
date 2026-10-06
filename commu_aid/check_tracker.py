@@ -3,7 +3,9 @@
     python -m commu_aid.check_tracker
 
 Prints the Python and SDK versions, what the Tobii SDK finds, and on macOS whether the Mac
-itself sees a Tobii device on USB. Each problem comes with what to try next.
+itself sees a Tobii device on USB. Then compares the screen size the tracker was set up for
+(Display Setup in Tobii Pro Eye Tracker Manager) with the real screen, because a mismatch makes
+gaze miss more and more towards the screen edges. Each problem comes with what to try next.
 """
 
 from __future__ import annotations
@@ -12,9 +14,10 @@ import platform
 import re
 import subprocess
 import sys
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 TOBII_USB_VENDOR_ID = 0x2104  # Tobii AB
+SIZE_TOLERANCE = 0.08  # display area and screen may differ this much (8%) before we warn
 
 
 def _mac_usb_registry() -> Optional[str]:
@@ -39,6 +42,53 @@ def tobii_usb_devices(registry: str) -> List[str]:
         if m and int(m.group(1)) == TOBII_USB_VENDOR_ID and name and name not in found:
             found.append(name)
     return found
+
+
+def display_area_problems(area_mm: Tuple[float, float], screen_mm: Optional[Tuple[float, float]]) -> List[str]:
+    """Warnings when the tracker's display area does not match the screen it sits on."""
+    w, h = area_mm
+    if screen_mm is None or min(screen_mm) <= 0:
+        return [] if w > 0 and h > 0 else ["the tracker has no display area set up"]
+    sw, sh = screen_mm
+    off = [abs(a - b) / b for a, b in ((w, sw), (h, sh))]
+    if max(off) <= SIZE_TOLERANCE:
+        return []
+    return [
+        f"the tracker is set up for a {w:.0f} x {h:.0f} mm screen, but this screen is {sw:.0f} x {sh:.0f} mm",
+    ]
+
+
+def _screen_size_mm() -> Optional[Tuple[float, float]]:
+    """Physical size of the main screen, from Qt (macOS reports it from the display itself)."""
+    try:
+        from PySide6.QtGui import QGuiApplication
+
+        app = QGuiApplication.instance() or QGuiApplication([])
+        size = app.primaryScreen().physicalSize()
+        return (size.width(), size.height()) if size.width() > 0 and size.height() > 0 else None
+    except Exception:
+        return None
+
+
+def _check_display_area(et) -> bool:
+    try:
+        area = et.get_display_area()
+    except Exception as exc:
+        print(f"Display     could not read the display area: {exc}")
+        return True
+    screen = _screen_size_mm()
+    line = f"Display     tracker set up for {area.width:.0f} x {area.height:.0f} mm"
+    if screen:
+        line += f"; main screen is {screen[0]:.0f} x {screen[1]:.0f} mm"
+    print(line)
+    problems = display_area_problems((area.width, area.height), screen)
+    for problem in problems:
+        print(f"  ! {problem}.")
+    if problems:
+        print("    Gaze will miss more and more towards the screen edges. Open Tobii Pro Eye Tracker")
+        print("    Manager > Display Setup, enter this screen's size and where the tracker is mounted,")
+        print("    then calibrate again in the app (F2).")
+    return not problems
 
 
 def main() -> int:
@@ -82,6 +132,7 @@ def main() -> int:
     for et in trackers:
         print(f"Tracker     {et.model}  serial {et.serial_number}  firmware {et.firmware_version}")
         print(f"            {et.address}")
+    ok = _check_display_area(trackers[0]) and ok
     return 0 if ok else 1
 
 
