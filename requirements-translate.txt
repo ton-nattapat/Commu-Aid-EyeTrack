@@ -1,0 +1,4 @@
+# Offline English to Thai with Meta NLLB-200 (model downloads about 2.5 GB on first use)
+transformers>=4.40
+torch>=2.2
+sentencepiece>=0.2

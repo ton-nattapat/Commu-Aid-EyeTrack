@@ -1,0 +1,50 @@
+# Communication Aid settings.
+# The caregiver Settings page (F3) rewrites this file; edit by hand only while the app is closed.
+
+dwell:
+  dwell_time_s: 3.0        # how long the patient must look at a button to select it (2.0 to 5.0)
+  blink_grace_s: 0.3       # a gap this short (blink, jitter off the button) does not reset the timer
+  cooldown_s: 1.0          # after a selection, nothing can be selected for this long
+  smoothing_samples: 5     # moving-average window on the gaze point (about 0.08 s at 60 Hz)
+
+display:
+  width: 1920
+  height: 1080
+  show_gaze_dot: true      # toggle at runtime with Ctrl+G
+
+language:
+  screen: en               # language of the buttons and keyboard
+  speak: th                # language the app speaks
+  translate: true          # translate typed English to Thai before speaking
+
+translation:
+  engine: nllb             # nllb (offline, Meta NLLB-200) or none
+  model: facebook/nllb-200-distilled-600M
+  source_code: eng_Latn
+  target_code: tha_Thai
+
+speech:
+  engine: auto             # auto (macOS: say, others: pyttsx3), say, pyttsx3, none
+  voice_th: Kanya          # macOS Thai voice; on Windows, a voice name containing this text is used
+  voice_en: Samantha
+  rate: 170                # words per minute
+
+calibration:
+  on_startup: true                 # run calibration every time the app starts
+  saved_file: ~/.commu_aid/calibration.bin
+  auto_accept_max_error_px: 0      # 0 = caregiver must press Accept; e.g. 60 = accept automatically when every point is within 60 px
+
+# Needs page tiles, left to right, top to bottom (11 tiles; the 12th corner tile always opens the keyboard).
+# action: speak = show and speak the Thai phrase; alert = also play the loud caregiver alarm.
+needs:
+  - {label: Thirsty, icon: "💧", thai: "ผมหิวน้ำครับ", action: speak}
+  - {label: Hungry, icon: "🍚", thai: "ผมหิวข้าวครับ", action: speak}
+  - {label: Pee, icon: "🚻", thai: "ผมปวดฉี่ครับ", action: speak}
+  - {label: Pain, icon: "🤕", thai: "ผมเจ็บครับ", action: speak}
+  - {label: Too hot, icon: "🥵", thai: "ผมร้อนครับ", action: speak}
+  - {label: Too cold, icon: "🥶", thai: "ผมหนาวครับ", action: speak}
+  - {label: Turn me, icon: "🔄", thai: "ช่วยพลิกตัวให้ผมหน่อยครับ", action: speak}
+  - {label: Suction, icon: "🫁", thai: "ช่วยดูดเสมหะให้ผมหน่อยครับ", action: speak}
+  - {label: "Yes", icon: "✅", thai: "ใช่ครับ", action: speak}
+  - {label: "No", icon: "❌", thai: "ไม่ใช่ครับ", action: speak}
+  - {label: Call caregiver, icon: "🔔", thai: "ช่วยมาหาผมหน่อยครับ", action: alert}
