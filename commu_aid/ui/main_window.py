@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QWidget
 
 from ..config import AppConfig, NeedTile
 from ..dwell import DwellEngine
-from ..gaze.filters import GazeSmoother
+from ..gaze.filters import make_gaze_filter
 from ..gaze.source import GazeSample, GazeSource
 from ..predict import Predictor
 from ..speech import Speaker
@@ -108,7 +108,9 @@ class MainWindow(QGraphicsView):
 
         d = cfg.dwell
         self.dwell = DwellEngine(d.dwell_time_s, d.blink_grace_s, d.cooldown_s)
-        self.smoother = GazeSmoother(d.smoothing_samples, reset_after_s=d.blink_grace_s)
+        self.smoother = make_gaze_filter(
+            cfg.gaze_filter, (cfg.display.width, cfg.display.height), reset_after_s=d.blink_grace_s
+        )
         self.last_sample: Optional[GazeSample] = None
         self.typed = ""
         self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))

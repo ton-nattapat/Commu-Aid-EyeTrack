@@ -234,8 +234,33 @@ Everything is in [`config.yaml`](config.yaml): dwell time, blink grace, cooldown
 tiles and their Thai phrases, translation, voices, and calibration options (for example
 `auto_accept_max_error_px` to accept a good calibration without pressing Enter, and
 `redo_point_px` to set when a calibration point is collected again), and the edge margins and
-snapping in `display` (see [If gaze misses near the screen edges](#if-gaze-misses-near-the-screen-edges)).
+snapping in `display` (see [If gaze misses near the screen edges](#if-gaze-misses-near-the-screen-edges)),
+and the gaze filter (see [If the gaze point is shaky](#if-the-gaze-point-is-shaky)).
 The Thai phrases should be checked by a Thai speaker; they use the male form (ผม ... ครับ).
+
+### If the gaze point is shaky
+
+Even a well-calibrated tracker reports a point that shakes by tens of pixels while the eyes hold
+still. The `gaze_filter` section of `config.yaml` steadies it. The default, `method: fixation`,
+works the way eyes move: they hold still on a button, then jump to the next one. While the
+samples stay within `fixation_radius_px` of the current point, the point is their average, so
+it barely moves; when `confirm_samples` samples in a row land somewhere new, it jumps straight
+there. A single wild sample never moves it.
+
+Compared on the simulated tracker (`--simulate`, 60 Hz), with the old 5-sample moving average:
+
+| Level | Shake while looking at a button (RMS) | Time for the point to reach a new button |
+| --- | --- | --- |
+| mild | 7.7 px → 8.6 px | 67 ms → 33 ms |
+| typical | 17.9 px → 12.0 px | 67 ms → 33 ms |
+| hard | 37.3 px → 24.4 px | 67 ms → 33 ms |
+
+The default `fixation_radius_px: 120` is set for noisy gaze. Keep it below 146 px, the distance
+between neighbouring button centres. With a steady tracker, 80 holds the point closer to slow
+drift (6.1 px at mild, 10.2 px at typical, 28.9 px at hard). If the point feels sticky, lower
+it or `confirm_samples`.
+`method: one_euro` is a speed-adaptive low-pass filter, and `method: average` brings back the
+old moving average. Press Ctrl+G to watch the dot while you try them.
 
 The app writes to `~/.commu_aid/`: the saved calibration, generated sounds, and
 `messages.log` (every message with a time stamp), and `words.json` (the words and word pairs
@@ -256,7 +281,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Dwell engine ─▶
 | `commu_aid/gaze/tobii_source.py` | Tobii SDK: gaze stream, user position, calibration |
 | `commu_aid/gaze/mouse_source.py` | Mouse as fake gaze for development |
 | `commu_aid/gaze/simulated_source.py` | Simulated tracker: mouse plus jitter, offset, blinks, dropouts |
-| `commu_aid/gaze/filters.py` | Combine both eyes, moving-average smoothing |
+| `commu_aid/gaze/filters.py` | Combine both eyes; gaze filters (fixation, One Euro, moving average) |
 | `commu_aid/dwell.py` | Dwell state machine (no UI code, unit tested) |
 | `commu_aid/targets.py` | Which button the gaze is on, with snapping to the nearest one |
 | `commu_aid/ui/main_window.py` | Full-screen window, gaze loop, page switching |
