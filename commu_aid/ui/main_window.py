@@ -24,6 +24,7 @@ from ..config import AppConfig, NeedTile
 from ..dwell import DwellEngine
 from ..gaze.filters import GazeSmoother
 from ..gaze.source import GazeSample, GazeSource
+from ..predict import Predictor
 from ..speech import Speaker
 from ..translate import TranslationError, Translator
 from . import theme
@@ -82,8 +83,9 @@ class MainWindow(QGraphicsView):
         self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, theme.CANVAS_W - 2 * theme.MARGIN, theme.BAR_H)
 
         self.needs_page = NeedsPage(cfg.needs, self._on_need, lambda: self.show_page(self.keyboard_page), self.canvas)
+        self.predictor = Predictor(DATA_DIR / "words.json", extra_words=[n.label for n in cfg.needs])
         self.keyboard_page = KeyboardPage(
-            self._on_letter, self._on_delete, self._on_clear, self._on_speak,
+            self._on_letter, self._on_word, self._on_delete, self._on_clear, self._on_speak,
             lambda: self.show_page(self.needs_page), self.canvas,
         )
         self.page: Page = self.needs_page
@@ -105,6 +107,7 @@ class MainWindow(QGraphicsView):
         self.smoother = GazeSmoother(d.smoothing_samples, reset_after_s=d.blink_grace_s)
         self.last_sample: Optional[GazeSample] = None
         self.typed = ""
+        self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
         self._request_id = 0
         self._translated.connect(self._on_translated)
 
@@ -169,7 +172,7 @@ class MainWindow(QGraphicsView):
         if point is not None:
             local = point.toPoint() - self.page.pos()
             for b in self.page.buttons:
-                if b.geometry().contains(local):
+                if not b.isHidden() and b.geometry().contains(local):
                     target = b.key
                     break
 
@@ -197,7 +200,7 @@ class MainWindow(QGraphicsView):
         page.show()
         self.gaze_dot.raise_()
         if page is self.keyboard_page:
-            self.bar.show_typing(self.typed)
+            self._show_typed()
 
     def _on_need(self, tile: NeedTile) -> None:
         self.bar.show_message(tile.label, tile.thai)
@@ -208,22 +211,35 @@ class MainWindow(QGraphicsView):
         else:
             self.speaker.speak(tile.thai, "th")
 
+    def _show_typed(self) -> None:
+        self.bar.show_typing(self.typed)
+        self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
+
     def _on_letter(self, ch: str) -> None:
         self.typed += ch
-        self.bar.show_typing(self.typed)
+        self._show_typed()
+
+    def _on_word(self, word: str) -> None:
+        """Replace the word being typed with the chosen one, then a space."""
+        if not word:
+            return
+        stem = self.typed.rstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        self.typed = stem + word + " "
+        self._show_typed()
 
     def _on_delete(self) -> None:
         self.typed = self.typed[:-1]
-        self.bar.show_typing(self.typed)
+        self._show_typed()
 
     def _on_clear(self) -> None:
         self.typed = ""
-        self.bar.show_typing(self.typed)
+        self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
 
     def _on_speak(self) -> None:
         text = " ".join(self.typed.split()).capitalize()
         if not text:
             return
+        self.predictor.learn(text)
         self._request_id += 1
         request = self._request_id
         lang = self.cfg.language

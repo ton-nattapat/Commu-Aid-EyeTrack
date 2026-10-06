@@ -228,3 +228,38 @@ def test_needs_tile_still_selected_with_simulated_gaze(app, monkeypatch, tmp_pat
     look_at(w, target, button(w.needs_page, ("need", 0)))
     dwell(w, clock, app, 8.0)
     assert speaker.spoken and speaker.spoken[0] == ("ผมหิวน้ำครับ", "th")
+
+
+def test_word_prediction_finishes_the_word(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    for key in [("key", "W"), ("key", "A"), ("key", "T")]:
+        look_at(w, source, button(w.keyboard_page, key))
+        dwell(w, clock, app, 3.2)
+        source.point = None
+        dwell(w, clock, app, 1.2)
+    first = button(w.keyboard_page, ("word", 0))
+    assert first.label == "WATER"
+    look_at(w, source, first)
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "WATER "
+    assert w.bar.english == "WATER "
+
+
+def test_empty_suggestion_cannot_be_chosen(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.keyboard_page.set_suggestions(["YES"])
+    hidden = button(w.keyboard_page, ("word", 1))
+    assert hidden.isHidden()
+    look_at(w, source, hidden)
+    dwell(w, clock, app, 3.2)
+    assert w.typed == ""
+
+
+def test_keyboard_targets_stay_large(setup):
+    w = setup[0]()
+    for b in w.keyboard_page.buttons:
+        assert min(b.width(), b.height()) >= 110, b.key
