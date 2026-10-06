@@ -4,13 +4,20 @@ A calibration point whose data came out much worse than the rest (typically a bo
 the eyelids cover the eyes from the tracker's view) is shown once more and collected again before
 validation. The result screen draws a line from each dot to where the gaze actually landed, and
 says so when every point misses in the same outward or inward direction, which points at a wrong
-screen size in Tobii Pro Eye Tracker Manager's Display Setup rather than at the patient.
+screen size in Tobii Pro Eye Tracker Manager's Display Setup rather than at the patient. It also
+plots every gaze sample behind each result: per eye (blue left, pink right) where the tracker
+reports eyes separately, hollow for samples the tracker left out of the calibration.
+
+The live gaze is drawn on every stage of this screen, unfiltered, so the caregiver can see what the
+tracker sees. The patient may follow the dot instead of the target; G hides it.
 
 The caregiver drives this screen with the keyboard or mouse:
   Space  start calibration (from the position check)
   Enter  accept the result
   R      retry
   Esc    skip, and use the last saved calibration instead
+  G      show or hide the live gaze
+  S      show or hide the gaze samples on the result screen
 """
 
 from __future__ import annotations
@@ -18,11 +25,12 @@ from __future__ import annotations
 import math
 import threading
 import time
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QPushButton, QWidget
 
 from ..gaze.source import GazeSample
@@ -34,6 +42,8 @@ SHRINK_S = 1.2  # target shrinks to draw the eye before data is collected
 SETTLE_S = 0.8  # validation: ignore gaze while the eye moves to the target
 MEASURE_S = 1.0  # validation: average gaze over this long
 GOOD_PX = 60  # under this error a point is shown in the accent colour, above it in orange
+LIVE_TRAIL_S = 0.3  # live gaze: recent samples drawn as a fading trail behind the current one
+LIVE_STALE_S = 0.3  # live gaze: hide it when no valid sample came for this long (blink, eyes lost)
 DISPLAY_SETUP_HINT = "check the screen size in Eye Tracker Manager > Display Setup"
 
 BUTTON_STYLE = (
@@ -48,6 +58,27 @@ class PointError:
     y: float
     error_px: Optional[float]
     gaze: Optional[QPointF] = None  # where the gaze landed on average, canvas coordinates
+    samples: List["Sample"] = field(default_factory=list)  # every gaze sample behind the result
+
+
+@dataclass
+class Sample:
+    """One gaze sample to plot, canvas coordinates."""
+
+    eye: str  # "left" | "right" | "both" (no per-eye data)
+    pos: QPointF
+    used: bool = True  # False: the tracker left it out of the calibration
+
+
+def eye_samples(sample: GazeSample, map_to_canvas) -> List[Sample]:
+    """A live gaze sample as one point per eye, or one combined point when the source has no per-eye data."""
+    if sample.left is None and sample.right is None:
+        return [Sample("both", map_to_canvas(sample.x, sample.y))]
+    return [
+        Sample(eye, map_to_canvas(*pt))
+        for eye, pt in (("left", sample.left), ("right", sample.right))
+        if pt is not None
+    ]
 
 
 def radial_pattern(points: List[Tuple[float, float, float, float]], centre: Tuple[float, float]) -> Optional[str]:
@@ -82,7 +113,7 @@ class CalibrationScreen(QWidget):
 
     def __init__(
         self, source, map_to_canvas: Callable[[float, float], QPointF], auto_accept_px: float = 0,
-        redo_px: float = 0, parent=None,
+        redo_px: float = 0, parent=None, show_live_gaze: bool = True,
     ):
         super().__init__(parent)
         self.source = source
@@ -102,6 +133,10 @@ class CalibrationScreen(QWidget):
         self.calibration_errors: List[PointError] = []
         self.validation_errors: List[PointError] = []
         self._samples: List[Tuple[float, float]] = []
+        self._raw_samples: List[Sample] = []  # validation: every sample measured at the current point
+        self.show_live_gaze = show_live_gaze
+        self.show_samples = True
+        self._live: "deque[Tuple[float, QPointF, List[Sample]]]" = deque()  # (time, combined, per eye)
         self._worker_done.connect(self._on_worker_done)
 
         self._timer = QTimer(self)
@@ -123,14 +158,21 @@ class CalibrationScreen(QWidget):
             self._buttons[name] = b
         self._show_buttons("start", "skip")
 
-    # Gaze from the main window, used for validation.
+    # Unfiltered gaze from the main window: drawn live, and measured during validation.
     def feed(self, sample: GazeSample) -> None:
-        if self.stage != "validate" or not sample.valid:
+        if not sample.valid:
+            return
+        pt = self.map_to_canvas(sample.x, sample.y)
+        eyes = eye_samples(sample, self.map_to_canvas)
+        self._live.append((sample.t, pt, eyes))
+        while self._live and self._live[0][0] < sample.t - LIVE_TRAIL_S:
+            self._live.popleft()
+        if self.stage != "validate":
             return
         elapsed = time.monotonic() - self.stage_started
         if SETTLE_S <= elapsed <= SETTLE_S + MEASURE_S:
-            pt = self.map_to_canvas(sample.x, sample.y)
             self._samples.append((pt.x(), pt.y()))
+            self._raw_samples.extend(eyes)
 
     # Flow
 
@@ -185,6 +227,7 @@ class CalibrationScreen(QWidget):
                 PointError(
                     p.x, p.y, p.mean_error_px,
                     self.map_to_canvas(p.gaze_x, p.gaze_y) if p.gaze_x is not None else None,
+                    [Sample(s.eye, self.map_to_canvas(s.x, s.y), s.used) for s in getattr(p, "samples", [])],
                 )
                 for p in points
             ]
@@ -221,6 +264,7 @@ class CalibrationScreen(QWidget):
 
     def _begin_validation_point(self) -> None:
         self._samples = []
+        self._raw_samples = []
         self.stage_started = time.monotonic()
 
     def _finish_validation_point(self) -> None:
@@ -233,7 +277,7 @@ class CalibrationScreen(QWidget):
             gaze = QPointF(mx, my)
         else:
             err, gaze = None, None
-        self.validation_errors.append(PointError(x, y, err, gaze))
+        self.validation_errors.append(PointError(x, y, err, gaze, self._raw_samples))
         self.point_index += 1
         if self.point_index < len(VALIDATION_POINTS):
             self._begin_validation_point()
@@ -317,22 +361,24 @@ class CalibrationScreen(QWidget):
             self.start_calibration()
         elif key == Qt.Key_Escape:
             self.skip()
+        elif key == Qt.Key_G:
+            self.show_live_gaze = not self.show_live_gaze
+        elif key == Qt.Key_S and self.stage == "result":
+            self.show_samples = not self.show_samples
         else:
             super().keyPressEvent(event)
 
     # Drawing
 
     def _show_buttons(self, *names: str) -> None:
-        x = theme.CANVAS_W - theme.MARGIN
-        for name in reversed(list(self._buttons)):
-            b = self._buttons[name]
+        # Centred, so the bottom corner calibration points and their samples stay in view.
+        w, gap = 380, 24
+        x = (theme.CANVAS_W - len(names) * w - (len(names) - 1) * gap) // 2
+        for name, b in self._buttons.items():
             b.setVisible(name in names)
-        for name in reversed(names):
-            b = self._buttons[name]
-            w = 420
-            x -= w
-            b.setGeometry(x, theme.CANVAS_H - 120, w, 72)
-            x -= 24
+        for name in names:
+            self._buttons[name].setGeometry(x, theme.CANVAS_H - 120, w, 72)
+            x += w + gap
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
@@ -348,7 +394,28 @@ class CalibrationScreen(QWidget):
             self._paint_text(p, self.message, theme.CANVAS_H / 2)
         elif self.stage == "result":
             self._paint_result(p)
+        if self.show_live_gaze:
+            self._paint_live(p)
         p.end()
+
+    def _paint_live(self, p: QPainter) -> None:
+        if not self._live or time.monotonic() - self._live[-1][0] > LIVE_STALE_S:
+            return
+        p.setPen(Qt.NoPen)
+        newest = self._live[-1][0]
+        for t, pt, _eyes in self._live:
+            color = QColor(theme.GAZE_DOT)
+            color.setAlphaF(0.5 * max(0.0, 1 - (newest - t) / LIVE_TRAIL_S))
+            p.setBrush(color)
+            p.drawEllipse(pt, 6, 6)
+        _t, pt, eyes = self._live[-1]
+        p.setPen(QPen(theme.TEXT, 2))
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(pt, 14, 14)
+        p.setPen(Qt.NoPen)
+        for s in eyes:
+            p.setBrush(_eye_color(s.eye))
+            p.drawEllipse(s.pos, 5, 5)
 
     def _paint_text(self, p: QPainter, text: str, y: float, px: int = 40, color=None) -> None:
         p.setPen(color or theme.TEXT)
@@ -397,9 +464,13 @@ class CalibrationScreen(QWidget):
         p.drawEllipse(center, 5, 5)
 
     def _paint_result(self, p: QPainter) -> None:
+        if self.show_samples:
+            for pe in self.calibration_errors + self.validation_errors:
+                self._paint_samples(p, pe.samples)
+            self._paint_legend(p)
         p.setFont(theme.font(26, bold=True))
         for pe in self.calibration_errors:
-            self._paint_error(p, pe, theme.TEXT_QUIET)
+            self._paint_error(p, pe, theme.TEXT_QUIET, label_above=True)  # the centre has both kinds of point
         for pe in self.validation_errors:
             color = theme.WARNING if pe.error_px is None or pe.error_px > GOOD_PX else theme.HOVER
             self._paint_error(p, pe, color)
@@ -414,7 +485,7 @@ class CalibrationScreen(QWidget):
             p.drawRoundedRect(QRectF((theme.CANVAS_W - w) / 2, 210, w, 56), 14, 14)
             self._paint_text(p, self.hint, 238, 30, theme.WARNING)
 
-    def _paint_error(self, p: QPainter, pe: PointError, color) -> None:
+    def _paint_error(self, p: QPainter, pe: PointError, color, label_above: bool = False) -> None:
         center = self.map_to_canvas(pe.x, pe.y)
         p.setPen(QPen(color, 3))
         p.setBrush(Qt.NoBrush)
@@ -427,4 +498,46 @@ class CalibrationScreen(QWidget):
         p.drawLine(center + QPointF(-8, 0), center + QPointF(8, 0))
         p.drawLine(center + QPointF(0, -8), center + QPointF(0, 8))
         label = "not seen" if pe.error_px is None else f"{pe.error_px:.0f} px"
-        p.drawText(QRectF(center.x() - 100, center.y() + radius + 4, 200, 34), Qt.AlignCenter, label)
+        y = center.y() - radius - 38 if label_above else center.y() + radius + 4
+        p.drawText(QRectF(center.x() - 100, y, 200, 34), Qt.AlignCenter, label)
+
+    def _paint_samples(self, p: QPainter, samples: List[Sample]) -> None:
+        for s in samples:
+            color = QColor(_eye_color(s.eye))
+            color.setAlpha(200)
+            if s.used:
+                p.setPen(Qt.NoPen)
+                p.setBrush(color)
+            else:
+                p.setPen(QPen(color, 1.5))
+                p.setBrush(Qt.NoBrush)
+            p.drawEllipse(s.pos, 3, 3)
+
+    def _paint_legend(self, p: QPainter) -> None:
+        eyes = {s.eye for pe in self.calibration_errors + self.validation_errors for s in pe.samples}
+        if not eyes:
+            return
+        items = [(e, label) for e, label in (("left", "left eye"), ("right", "right eye"), ("both", "gaze"))
+                 if e in eyes]
+        if any(not s.used for pe in self.calibration_errors for s in pe.samples):
+            items.append(("unused", "not used"))
+        # A column at the middle of the left edge, the one place clear of every point and button.
+        p.setFont(theme.font(22))
+        x, y = float(theme.MARGIN), theme.CANVAS_H / 2 - 18 * len(items)
+        for kind, label in items:
+            if kind == "unused":
+                p.setPen(QPen(theme.TEXT_QUIET, 2))
+                p.setBrush(Qt.NoBrush)
+            else:
+                p.setPen(Qt.NoPen)
+                p.setBrush(_eye_color(kind))
+            p.drawEllipse(QPointF(x + 8, y), 7, 7)
+            p.setPen(theme.TEXT_QUIET)
+            p.drawText(QRectF(x + 24, y - 18, 280, 36), Qt.AlignVCenter | Qt.AlignLeft, label)
+            y += 36
+        p.setPen(theme.TEXT_QUIET)
+        p.drawText(QRectF(x, y, 300, 36), Qt.AlignVCenter | Qt.AlignLeft, "S samples, G live gaze")
+
+
+def _eye_color(eye: str) -> QColor:
+    return {"left": theme.LEFT_EYE, "right": theme.RIGHT_EYE}.get(eye, theme.BOTH_EYES)

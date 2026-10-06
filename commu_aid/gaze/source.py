@@ -14,6 +14,9 @@ class GazeSample:
     x: float = 0.0
     y: float = 0.0
     valid: bool = True
+    # Each eye on its own, 0..1, when the tracker reports them (None for that eye, or for mouse gaze).
+    left: Optional[Tuple[float, float]] = None
+    right: Optional[Tuple[float, float]] = None
 
 
 @dataclass

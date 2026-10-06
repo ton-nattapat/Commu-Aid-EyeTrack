@@ -77,6 +77,7 @@ class CalibrationConfig:
     saved_file: str = "~/.commu_aid/calibration.bin"
     auto_accept_max_error_px: float = 0
     redo_point_px: float = 150  # recollect a calibration point once when its error is above this (0 = never)
+    show_live_gaze: bool = True  # draw the gaze live on the calibration screen (G toggles it there)
 
     @property
     def saved_path(self) -> Path:

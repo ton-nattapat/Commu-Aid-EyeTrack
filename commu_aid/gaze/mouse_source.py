@@ -47,11 +47,30 @@ class MouseDemoCalibrationSource(MouseGazeSource):
         pass
 
     def compute(self, screen_w: int, screen_h: int):
-        from .tobii_source import CalibrationPointResult
+        """Made-up samples scattered around each point, so the result screen has something to plot."""
+        import math
+        import random
+
+        from .tobii_source import CalibrationPointResult, EyeSample
 
         from ..ui.calibration import CALIBRATION_POINTS
 
-        return True, [CalibrationPointResult(x, y, 0.0) for x, y in CALIBRATION_POINTS]
+        rng = random.Random(1)
+        points = []
+        for x, y in CALIBRATION_POINTS:
+            samples = []
+            for eye, dx in (("left", -12.0), ("right", 12.0)):
+                for i in range(30):
+                    samples.append(EyeSample(
+                        eye, x + rng.gauss(dx, 10.0) / screen_w, y + rng.gauss(0.0, 10.0) / screen_h, i % 10 != 9,
+                    ))
+            used = [s for s in samples if s.used]
+            errors = [math.hypot((s.x - x) * screen_w, (s.y - y) * screen_h) for s in used]
+            points.append(CalibrationPointResult(
+                x, y, sum(errors) / len(errors),
+                sum(s.x for s in used) / len(used), sum(s.y for s in used) / len(used), samples,
+            ))
+        return True, points
 
     def leave_calibration(self) -> None:
         pass
