@@ -1,7 +1,8 @@
 # Commu-Aid-EyeTrack
 
 A full-screen communication aid for a person with ALS, driven by a Tobii Pro Spark eye tracker.
-The patient looks at a button for 3 seconds to choose it. The app shows the English text and
+The patient looks at a button for a set time (3 seconds by default, adjustable from 1 to 3)
+to choose it. The app shows the English text and
 speaks it in Thai.
 
 - **Page 1, Needs:** 11 large tiles (Thirsty, Hungry, Pee, Pain, Too hot, Too cold, Turn me,
@@ -99,6 +100,8 @@ python -m commu_aid --mouse --windowed   # no tracker: the mouse stands in for g
 python -m commu_aid --mouse --calibration-demo   # rehearse the calibration screen with the mouse
 python -m commu_aid --simulate --windowed        # simulated eye tracker (see below)
 python -m commu_aid --skip-calibration   # use the last saved calibration
+python -m commu_aid --config other.yaml  # use a different settings file
+python -m commu_aid -v                   # verbose logging
 ```
 
 ### Simulated eye tracker
@@ -150,23 +153,30 @@ the patient has spoken, used to rank predictions; delete it to start fresh).
 
 ```text
 Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Dwell engine ─▶ UI pages ─▶ Speech
- (tobii_research    (or mouse)    (combine eyes,  (3 s timer,     (Needs,
-  60 Hz)                           smooth, blinks) grace, cooldown) Keyboard)
+ (tobii_research    (or mouse,    (combine eyes,  (1-3 s timer,   (Needs,
+  60 Hz)             simulated)    smooth, blinks) grace, cooldown) Keyboard)
 ```
 
 | File | Role |
 | --- | --- |
+| `commu_aid/main.py` | Command-line options, picks the gaze source, starts the app |
+| `commu_aid/config.py` | Loads and saves `config.yaml` |
 | `commu_aid/gaze/tobii_source.py` | Tobii SDK: gaze stream, user position, calibration |
 | `commu_aid/gaze/mouse_source.py` | Mouse as fake gaze for development |
 | `commu_aid/gaze/simulated_source.py` | Simulated tracker: mouse plus jitter, offset, blinks, dropouts |
 | `commu_aid/gaze/filters.py` | Combine both eyes, moving-average smoothing |
 | `commu_aid/dwell.py` | Dwell state machine (no UI code, unit tested) |
 | `commu_aid/ui/main_window.py` | Full-screen window, gaze loop, page switching |
-| `commu_aid/ui/pages.py` | Needs and Keyboard layouts |
+| `commu_aid/ui/pages.py` | Needs and Keyboard layouts, word prediction row |
+| `commu_aid/ui/dwell_button.py` | Button that fills up while it is looked at |
+| `commu_aid/ui/message_bar.py` | English and Thai text shown at the top |
+| `commu_aid/ui/gaze_dot.py` | Gaze dot overlay (Ctrl+G) |
 | `commu_aid/ui/calibration.py` | Start-up calibration screen |
 | `commu_aid/ui/settings.py` | Caregiver settings |
 | `commu_aid/predict.py` | Offline word prediction (10,000 common words, care words, learning) |
+| `commu_aid/data/` | Word lists for prediction (`english_words.txt`, `care_words.txt`) |
 | `commu_aid/speech.py` | Offline text-to-speech (`say` on macOS, pyttsx3 elsewhere) |
+| `commu_aid/sounds.py` | Click and caregiver-alarm sounds, generated on first run |
 | `commu_aid/translate.py` | Offline English to Thai with NLLB-200 |
 
 Dwell rules: a selection fires after the dwell time on one button; a blink or glance away
@@ -180,6 +190,6 @@ types "AAAA" or bounces between pages.
 python -m pytest        # in the activated commu-aid environment (pytest comes with environment.yml)
 ```
 
-The tests cover the dwell engine with scripted gaze streams, the gaze filters, config
-loading and saving, and the whole window driven by a scripted gaze source (choosing a need,
+The tests cover the dwell engine with scripted gaze streams, the gaze filters, the simulated
+eye tracker (jitter, offset, drift, blinks, dropouts, repeatable seeds), word prediction, config loading and saving, and the whole window driven by a scripted gaze source (choosing a need,
 the alarm, typing and speaking, word prediction, translation failure, page switching, and settings).
