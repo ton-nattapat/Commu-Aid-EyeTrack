@@ -33,3 +33,30 @@ def test_dwell_time_is_clamped(tmp_path):
     assert load_config(p).dwell.dwell_time_s == 3.0
     p.write_text("dwell: {dwell_time_s: 0.5}\n", encoding="utf-8")
     assert load_config(p).dwell.dwell_time_s == 1.0
+
+
+def test_gaze_filter_defaults_to_fixation():
+    assert load_config(ROOT / "config.yaml").gaze_filter.method == "fixation"
+
+
+def test_old_config_keeps_its_smoothing_window(tmp_path):
+    p = tmp_path / "c.yaml"
+    p.write_text("dwell: {dwell_time_s: 1.0, smoothing_samples: 8}\n", encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.dwell.dwell_time_s == 1.0
+    assert cfg.gaze_filter.method == "fixation"
+    assert cfg.gaze_filter.average_samples == 8
+
+
+def test_unknown_gaze_filter_method_falls_back(tmp_path):
+    p = tmp_path / "c.yaml"
+    p.write_text("gaze_filter: {method: kalman}\n", encoding="utf-8")
+    assert load_config(p).gaze_filter.method == "fixation"
+
+
+def test_gaze_filter_survives_save(tmp_path):
+    cfg = load_config(ROOT / "config.yaml")
+    cfg.gaze_filter.fixation_radius_px = 100
+    out = tmp_path / "config.yaml"
+    cfg.save(out)
+    assert load_config(out).gaze_filter.fixation_radius_px == 100

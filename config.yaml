@@ -5,7 +5,18 @@ dwell:
   dwell_time_s: 3.0        # how long the patient must look at a button to select it (1.0 to 3.0)
   blink_grace_s: 0.3       # a gap this short (blink, jitter off the button) does not reset the timer
   cooldown_s: 1.0          # after a selection, nothing can be selected for this long
-  smoothing_samples: 5     # moving-average window on the gaze point (about 0.08 s at 60 Hz)
+
+# Steadies the noisy gaze point. Eyes hold still on a button, then jump to the next one;
+# the filter smooths hard while they hold still and follows a jump within a few samples.
+gaze_filter:
+  method: fixation         # fixation (recommended), one_euro, or average (the old moving average)
+  fixation_radius_px: 80   # shake within this distance stays on one point; raise if the dot still wobbles (up to about 120)
+  confirm_samples: 3       # samples in a row at a new spot before the point jumps there (3 = 50 ms at 60 Hz)
+  hold_s: 0.3              # how much recent gaze the steady point averages; it still follows slow drift
+  min_cutoff_hz: 0.5       # one_euro only: lower = steadier when still
+  beta: 0.01               # one_euro only: higher = less lag on fast movements
+  d_cutoff_hz: 1.0         # one_euro only
+  average_samples: 5       # average only: window size (about 0.08 s at 60 Hz)
 
 display:
   width: 1920

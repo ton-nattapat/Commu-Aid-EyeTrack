@@ -18,7 +18,24 @@ class DwellConfig:
     dwell_time_s: float = 3.0
     blink_grace_s: float = 0.3
     cooldown_s: float = 1.0
-    smoothing_samples: int = 5
+
+
+GAZE_FILTER_METHODS = ("fixation", "one_euro", "average")
+
+
+@dataclass
+class GazeFilterConfig:
+    method: str = "fixation"  # fixation | one_euro | average
+    # fixation: hold one point per fixation, jump only when the eyes really move
+    fixation_radius_px: float = 80  # shake within this distance stays on the same point
+    confirm_samples: int = 3  # this many samples in a row at a new spot make a jump (3 = 50 ms at 60 Hz)
+    hold_s: float = 0.3  # the point averages this much recent gaze, so it still follows slow drift
+    # one_euro: speed-adaptive low-pass filter
+    min_cutoff_hz: float = 0.5
+    beta: float = 0.01
+    d_cutoff_hz: float = 1.0
+    # average: the old moving average
+    average_samples: int = 5
 
 
 @dataclass
@@ -77,6 +94,7 @@ class NeedTile:
 @dataclass
 class AppConfig:
     dwell: DwellConfig = field(default_factory=DwellConfig)
+    gaze_filter: GazeFilterConfig = field(default_factory=GazeFilterConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
     language: LanguageConfig = field(default_factory=LanguageConfig)
     translation: TranslationConfig = field(default_factory=TranslationConfig)
@@ -120,6 +138,7 @@ def load_config(path: Path | str) -> AppConfig:
     ][:NEEDS_TILE_COUNT]
     cfg = AppConfig(
         dwell=_section(DwellConfig, raw.get("dwell")),
+        gaze_filter=_gaze_filter(raw),
         display=_section(DisplayConfig, raw.get("display")),
         language=_section(LanguageConfig, raw.get("language")),
         translation=_section(TranslationConfig, raw.get("translation")),
@@ -129,6 +148,18 @@ def load_config(path: Path | str) -> AppConfig:
         path=path,
     )
     cfg.dwell.dwell_time_s = clamp_dwell(cfg.dwell.dwell_time_s)
+    return cfg
+
+
+def _gaze_filter(raw) -> GazeFilterConfig:
+    cfg = _section(GazeFilterConfig, raw.get("gaze_filter"))
+    if "gaze_filter" not in raw:
+        # Config files from before the gaze filter kept the moving-average window under dwell.
+        old = (raw.get("dwell") or {}).get("smoothing_samples")
+        if old is not None:
+            cfg.average_samples = int(old)
+    if cfg.method not in GAZE_FILTER_METHODS:
+        cfg.method = GazeFilterConfig.method
     return cfg
 
 
