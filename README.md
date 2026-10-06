@@ -31,6 +31,20 @@ speaks it in Thai.
 The design and decisions are in the
 [design proposal](https://claude.ai/code/artifact/2b4e4611-b66c-4974-8125-2c922de159a4).
 
+## Mac app for other Macs
+
+To test on a Mac without setting up Python, build an installer on your Mac and send it:
+
+```bash
+conda activate commu-aid
+packaging/mac/build_mac.sh      # makes dist/CommunicationAid-<version>-<chip>.dmg
+```
+
+The other Mac drags the app to Applications, allows it once in Privacy & Security (it isn't
+signed by Apple), adds the Thai voice, and installs the Tobii Pro Spark driver from Tobii as a
+separate step. The translation model downloads on the app's first start. Building, installing,
+and where the app keeps its files are in [docs/install-mac.md](docs/install-mac.md).
+
 ## Setup (macOS)
 
 `tobii-research` only ships wheels for **Python 3.10**, so the environment must use exactly
@@ -195,6 +209,7 @@ python -m commu_aid --simulate --windowed        # simulated eye tracker (see be
 python -m commu_aid --skip-calibration   # use the last saved calibration
 python -m commu_aid --config other.yaml  # use a different settings file
 python -m commu_aid -v                   # verbose logging
+python -m commu_aid --check-tracker      # same as python -m commu_aid.check_tracker
 ```
 
 ### Simulated eye tracker
@@ -274,7 +289,8 @@ old moving average. Press Ctrl+G to watch the dot while you try them.
 
 The app writes to `~/.commu_aid/`: the saved calibration, generated sounds, and
 `messages.log` (every message with a time stamp), and `words.json` (the words and word pairs
-the patient has spoken, used to rank predictions; delete it to start fresh).
+the patient has spoken, used to rank predictions; delete it to start fresh). The Mac app also
+keeps its `config.yaml` and `app.log` there.
 
 ## How it works
 
@@ -306,6 +322,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Dwell engine ─▶
 | `commu_aid/speech.py` | Offline text-to-speech (`say` on macOS, pyttsx3 elsewhere) |
 | `commu_aid/sounds.py` | Click and caregiver-alarm sounds, generated on first run |
 | `commu_aid/translate.py` | Offline English to Thai with NLLB-200 |
+| `packaging/mac/` | Mac app and `.dmg` installer build ([docs/install-mac.md](docs/install-mac.md)) |
 
 Dwell rules: a selection fires after the dwell time on one button; a blink or glance away
 shorter than 0.3 s does not reset the timer; after a selection, nothing can be selected for
