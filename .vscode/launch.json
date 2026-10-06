@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Communication Aid (mouse, windowed)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "commu_aid",
+      "args": ["--mouse", "--windowed"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Communication Aid (Tobii Pro Spark)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "commu_aid",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Communication Aid (calibration demo with mouse)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "commu_aid",
+      "args": ["--mouse", "--windowed", "--calibration-demo"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

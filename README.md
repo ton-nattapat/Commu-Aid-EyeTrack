@@ -24,10 +24,48 @@ The design and decisions are in the
 
 ## Setup (macOS)
 
-`tobii-research` only ships wheels for **Python 3.10**, so use exactly that version.
+`tobii-research` only ships wheels for **Python 3.10**, so the environment must use exactly
+that version.
+
+### With conda (terminal)
+
+From the project folder:
 
 ```bash
-# Python 3.10, e.g. with uv (or pyenv / python.org installer)
+conda env create -f environment.yml   # Python 3.10 + every requirement, including Tobii and translation
+conda activate commu-aid
+```
+
+[`environment.yml`](environment.yml) installs the app, the Tobii SDK, the offline translation
+packages (PyTorch is large, so this step takes a while) and pytest. After you pull new code
+that changes a `requirements*.txt` file, update the environment with:
+
+```bash
+conda env update -f environment.yml --prune
+```
+
+To start again from scratch: `conda env remove -n commu-aid`, then create it again.
+
+### With conda in VS Code
+
+1. Install the **Python** extension (it includes the debugger).
+2. Open the project folder in VS Code.
+3. Press Cmd+Shift+P, choose **Python: Select Interpreter**, and pick **commu-aid**
+   (create the environment in a terminal first, as above).
+4. Open a new terminal (Terminal > New Terminal): it activates `commu-aid` for you.
+   Run the app there with the commands under [Run](#run).
+5. Or open **Run and Debug** (Cmd+Shift+D), pick one of the configurations in
+   [`.vscode/launch.json`](.vscode/launch.json), and press F5:
+   - Communication Aid (mouse, windowed)
+   - Communication Aid (Tobii Pro Spark)
+   - Communication Aid (calibration demo with mouse)
+6. The tests show up in the **Testing** panel (the flask icon).
+
+If VS Code's terminal still shows `(base)`, run `conda activate commu-aid` in it once.
+
+### Without conda (uv or venv)
+
+```bash
 uv venv -p 3.10 .venv
 source .venv/bin/activate
 
@@ -35,6 +73,8 @@ uv pip install -r requirements.txt          # app
 uv pip install -r requirements-tobii.txt    # eye tracker
 uv pip install -r requirements-translate.txt  # offline translation (large: torch + 2.5 GB model)
 ```
+
+### One-time setup on the Mac
 
 Once only, in **Tobii Pro Eye Tracker Manager**, run Display Setup so the tracker knows the
 monitor's size and position. The app's layout is fixed at 1920x1080.
@@ -46,6 +86,8 @@ The first time Speak is used, the translation model downloads from Hugging Face
 (about 2.5 GB) and is cached after that, so the first run needs internet.
 
 ## Run
+
+From the project folder, with the environment active (`conda activate commu-aid`):
 
 ```bash
 python -m commu_aid                      # Tobii Pro Spark, calibration at start-up
@@ -60,9 +102,11 @@ Caregiver keys:
 | --- | --- |
 | F2 | Calibrate again |
 | F3 | Settings (dwell time, Needs tiles) |
-| Ctrl+G | Show or hide the gaze dot |
+| Ctrl+G (Cmd+G on a Mac) | Show or hide the gaze dot |
 | F11 | Full screen on or off |
-| Ctrl+Q | Quit |
+| Ctrl+Q (Cmd+Q on a Mac) | Quit |
+
+On a Mac keyboard, hold **fn** to use F2, F3 and F11.
 
 On the calibration screen: **Space** starts, **Enter** accepts, **R** retries, **Esc** skips and
 uses the saved calibration.
@@ -106,8 +150,7 @@ types "AAAA" or bounces between pages.
 ## Tests
 
 ```bash
-uv pip install -r requirements-dev.txt
-QT_QPA_PLATFORM=offscreen python -m pytest
+python -m pytest        # in the activated commu-aid environment (pytest comes with environment.yml)
 ```
 
 The tests cover the dwell engine with scripted gaze streams, the gaze filters, config
