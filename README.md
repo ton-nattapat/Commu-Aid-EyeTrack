@@ -109,7 +109,8 @@ It shows whether the Mac sees the tracker on USB and whether the Tobii SDK finds
 4. If Install is greyed out (Eye Tracker Manager only lists macOS 13 and 14 for the Spark), install
    the **Tobii Pro Spark runtime** for macOS from
    [connect.tobii.com/s/spark-downloads](https://connect.tobii.com/s/spark-downloads) instead. It
-   runs in Terminal and asks for your Mac password. The service is an Intel build, so an Apple
+   runs in Terminal and asks for your Mac password. Version 2.2.3.0
+   (`TobiiProSpark_2.2.3.0_x64.dmg`) works on our MacBook Air. The service is an Intel build, so an Apple
    silicon Mac needs Rosetta (`softwareupdate --install-rosetta --agree-to-license`). Unplug and
    replug the tracker afterwards, and restart the Mac if it still isn't found.
 5. Once Eye Tracker Manager shows the Spark, the checker should list it too.
