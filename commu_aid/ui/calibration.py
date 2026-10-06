@@ -42,6 +42,7 @@ SHRINK_S = 1.2  # target shrinks to draw the eye before data is collected
 SETTLE_S = 0.8  # validation: ignore gaze while the eye moves to the target
 MEASURE_S = 1.0  # validation: average gaze over this long
 GOOD_PX = 60  # under this error a point is shown in the accent colour, above it in orange
+FACE_W_PX = 300  # position check: width of the face mask at a good distance (z = 0.5)
 LIVE_TRAIL_S = 0.3  # live gaze: recent samples drawn as a fading trail behind the current one
 LIVE_STALE_S = 0.3  # live gaze: hide it when no valid sample came for this long (blink, eyes lost)
 DISPLAY_SETUP_HINT = "check the screen size in Eye Tracker Manager > Display Setup"
@@ -425,7 +426,8 @@ class CalibrationScreen(QWidget):
     def _paint_position(self, p: QPainter) -> None:
         self._paint_text(p, "Calibration", 120, 64)
         self._paint_text(
-            p, "Caregiver: move the screen or bed until both eyes sit inside the box, then press Space.", 220, 32, theme.TEXT_QUIET
+            p, "Caregiver: move the screen or bed until the face fits the dashed outline, then press Space.", 220, 32,
+            theme.TEXT_QUIET,
         )
         box = QRectF(theme.CANVAS_W / 2 - 400, 320, 800, 500)
         zone = box.adjusted(200, 125, -200, -125)
@@ -435,19 +437,43 @@ class CalibrationScreen(QWidget):
         p.drawRoundedRect(zone, 16, 16)
         left, right = self.source.user_position()
         status = "Eyes not found"
+        p.save()
+        p.setClipRect(box)
+        # Where the face should be: centred in the box at a good distance.
+        self._paint_face(p, zone.center(), 0.5, 0.0, theme.TEXT_QUIET, dashed=True)
         if left is not None and right is not None:
             seen = [e for e in (left, right) if e.valid]
-            for e in seen:
-                # The tracker looks at the patient, so x is mirrored to match what the caregiver sees.
-                pt = QPointF(box.left() + (1 - e.x) * box.width(), box.top() + e.y * box.height())
+            # The tracker looks at the patient, so x is mirrored to match what the caregiver sees.
+            pts = [QPointF(box.left() + (1 - e.x) * box.width(), box.top() + e.y * box.height()) for e in seen]
+            if seen:
+                z = sum(e.z for e in seen) / len(seen)
+                status = "Move closer" if z > 0.7 else "Move further away" if z < 0.3 else "Distance OK"
+            if len(seen) == 2:
+                # The face mask follows the head: centred between the eyes, tilted with them, bigger when closer.
+                good = status == "Distance OK" and all(zone.contains(pt) for pt in pts)
+                a, b = sorted(pts, key=lambda q: q.x())
+                angle = math.degrees(math.atan2(b.y() - a.y(), b.x() - a.x()))
+                self._paint_face(p, (a + b) / 2, z, angle, theme.HOVER if good else theme.WARNING)
+            for pt, e in zip(pts, seen):
                 radius = 18 + (1 - e.z) * 30  # bigger when closer
                 p.setPen(Qt.NoPen)
                 p.setBrush(theme.HOVER if zone.contains(pt) else theme.WARNING)
                 p.drawEllipse(pt, radius, radius)
-            if seen:
-                z = sum(e.z for e in seen) / len(seen)
-                status = "Move closer" if z > 0.7 else "Move further away" if z < 0.3 else "Distance OK"
+        p.restore()
         self._paint_text(p, status, 880, 36)
+
+    def _paint_face(self, p: QPainter, eyes: QPointF, z: float, angle: float, color, dashed: bool = False) -> None:
+        """A head outline with its eye line at `eyes`, sized by distance z (0 near, 1 far) and rotated by angle."""
+        w = FACE_W_PX * (1.5 - min(max(z, 0.0), 1.0))
+        h = 1.3 * w
+        p.save()
+        p.translate(eyes)
+        p.rotate(angle)
+        p.setPen(QPen(color, 3, Qt.DashLine if dashed else Qt.SolidLine))
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(QPointF(0, 0.12 * h), w / 2, h / 2)
+        p.drawArc(QRectF(-0.18 * w, 0.28 * h, 0.36 * w, 0.14 * h), 200 * 16, 140 * 16)  # mouth
+        p.restore()
 
     def _paint_target(self, p: QPainter, point, shrink: bool) -> None:
         center = self.map_to_canvas(*point)

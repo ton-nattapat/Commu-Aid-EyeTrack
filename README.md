@@ -14,7 +14,9 @@ speaks it in Thai.
   every message the patient speaks.
   Speak translates the typed English to Thai offline (Meta NLLB-200) and speaks the Thai.
 - **Calibration** runs every time the app starts: position check, 5-point calibration (a point
-  with bad data is shown once more), validation, then Accept or Retry. The live gaze is drawn
+  with bad data is shown once more), validation, then Accept or Retry. The position check draws a face
+  outline that follows the patient's head (bigger when closer, tilted with the eyes) over a dashed
+  outline of where it should be. The live gaze is drawn
   throughout, and the result plots every gaze sample collected at each point, per eye.
 - **Edges:** buttons keep clear of the left, right and bottom screen edges, where the tracker is
   least accurate, and gaze that lands just past a button still counts for it.

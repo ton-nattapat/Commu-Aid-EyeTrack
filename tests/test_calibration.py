@@ -199,3 +199,17 @@ def test_tobii_reports_each_eye(monkeypatch):
     })
     s = source.poll()[0]
     assert s.valid and (s.x, s.y) == (0.4, 0.5) and s.left == (0.4, 0.5) and s.right is None
+
+
+def test_position_check_draws_the_face_mask(app):
+    from commu_aid.gaze.source import EyePosition
+
+    source = FakeTracker()
+    screen = CalibrationScreen(source, lambda x, y: QPointF(x * 1920, y * 1080))
+    screen._timer.stop()
+    for pos in [
+        (EyePosition(0.56, 0.5, 0.5, True), EyePosition(0.44, 0.5, 0.5, True)),  # both eyes: face mask
+        (EyePosition(0.56, 0.5, 0.1, True), EyePosition(0.5, 0.5, 0.5, False)),  # one eye: no mask
+    ]:
+        source.user_position = lambda pos=pos: pos
+        screen.grab()
