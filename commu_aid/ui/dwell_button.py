@@ -18,7 +18,7 @@ class DwellButton(QWidget):
         label: str,
         on_select: Callable[[], None],
         icon: str = "",
-        variant: str = "normal",  # normal | nav | alert
+        variant: str = "normal",  # normal | nav | alert | word
         label_px: int = 48,
         parent: Optional[QWidget] = None,
     ):
@@ -59,7 +59,7 @@ class DwellButton(QWidget):
         path = QPainterPath()
         path.addRoundedRect(r, radius, radius)
 
-        fill = {"nav": theme.SURFACE_NAV, "alert": theme.SURFACE_ALERT}.get(self.variant, theme.SURFACE)
+        fill = {"nav": theme.SURFACE_NAV, "alert": theme.SURFACE_ALERT, "word": theme.SURFACE_WORD}.get(self.variant, theme.SURFACE)
         p.fillPath(path, theme.FLASH if self._flash else fill)
 
         if self.progress > 0 and not self._flash:

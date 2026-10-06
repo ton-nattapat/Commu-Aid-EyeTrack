@@ -207,3 +207,38 @@ def test_settings_save_changes_dwell_and_tiles(setup, app, tmp_path):
     dwell(w, clock, app, 2.2)
     assert w.bar.english == "Water"
     assert "Water" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+
+
+def test_word_prediction_finishes_the_word(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    for key in [("key", "W"), ("key", "A"), ("key", "T")]:
+        look_at(w, source, button(w.keyboard_page, key))
+        dwell(w, clock, app, 3.2)
+        source.point = None
+        dwell(w, clock, app, 1.2)
+    first = button(w.keyboard_page, ("word", 0))
+    assert first.label == "WATER"
+    look_at(w, source, first)
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "WATER "
+    assert w.bar.english == "WATER "
+
+
+def test_empty_suggestion_cannot_be_chosen(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.keyboard_page.set_suggestions(["YES"])
+    hidden = button(w.keyboard_page, ("word", 1))
+    assert hidden.isHidden()
+    look_at(w, source, hidden)
+    dwell(w, clock, app, 3.2)
+    assert w.typed == ""
+
+
+def test_keyboard_targets_stay_large(setup):
+    w = setup[0]()
+    for b in w.keyboard_page.buttons:
+        assert min(b.width(), b.height()) >= 110, b.key

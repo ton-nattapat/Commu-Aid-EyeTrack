@@ -70,10 +70,12 @@ class NeedsPage(Page):
 class KeyboardPage(Page):
     ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
     UNITS = 10  # keys per full row
+    SUGGESTIONS = 4  # word prediction buttons across the top row
 
     def __init__(
         self,
         on_letter: Callable[[str], None],
+        on_word: Callable[[str], None],
         on_delete: Callable[[], None],
         on_clear: Callable[[], None],
         on_speak: Callable[[], None],
@@ -82,19 +84,39 @@ class KeyboardPage(Page):
     ):
         super().__init__(parent)
         unit_w = (AREA_W - (self.UNITS - 1) * theme.GAP) / self.UNITS
-        row_h = (AREA_H - 3 * theme.GAP) / 4
+        row_h = (AREA_H - 4 * theme.GAP) / 5
 
         def rect(col: float, row: int, span: float = 1) -> QRect:
             x = col * (unit_w + theme.GAP)
             w = span * unit_w + (span - 1) * theme.GAP
             return QRect(round(x), round(row * (row_h + theme.GAP)), round(w), round(row_h))
 
+        # Row 0: predicted words. Picking one finishes the current word and adds a space.
+        word_w = (AREA_W - (self.SUGGESTIONS - 1) * theme.GAP) / self.SUGGESTIONS
+        self.suggestion_buttons: List[DwellButton] = []
+        for i in range(self.SUGGESTIONS):
+            b = DwellButton(("word", i), "", lambda i=i: on_word(self.suggestion_buttons[i].label), label_px=48, variant="word")
+            self.suggestion_buttons.append(
+                self.add(b, QRect(round(i * (word_w + theme.GAP)), 0, round(word_w), round(row_h)))
+            )
+
         offsets = [0, 0.5, 0]
         for r, letters in enumerate(self.ROWS):
             for c, ch in enumerate(letters):
-                self.add(DwellButton(("key", ch), ch, lambda ch=ch: on_letter(ch), label_px=64), rect(offsets[r] + c, r))
-        self.add(DwellButton("delete", "Delete", on_delete, label_px=44), rect(7, 2, 3))
-        self.add(DwellButton("space", "Space", lambda: on_letter(" "), label_px=44), rect(0, 3, 4))
-        self.add(DwellButton("clear", "Clear", on_clear, label_px=44), rect(4, 3, 2))
-        self.add(DwellButton("speak", "Speak", on_speak, icon="🔊", label_px=44, variant="nav"), rect(6, 3, 2))
-        self.add(DwellButton("nav", "Needs", on_needs, icon="🏠", label_px=44, variant="nav"), rect(8, 3, 2))
+                self.add(DwellButton(("key", ch), ch, lambda ch=ch: on_letter(ch), label_px=64), rect(offsets[r] + c, r + 1))
+        self.add(DwellButton("delete", "Delete", on_delete, label_px=44), rect(7, 3, 3))
+        self.add(DwellButton("space", "Space", lambda: on_letter(" "), label_px=44), rect(0, 4, 4))
+        self.add(DwellButton("clear", "Clear", on_clear, label_px=44), rect(4, 4, 2))
+        self.add(DwellButton("speak", "Speak", on_speak, icon="🔊", label_px=44, variant="nav"), rect(6, 4, 2))
+        self.add(DwellButton("nav", "Needs", on_needs, icon="🏠", label_px=44, variant="nav"), rect(8, 4, 2))
+
+    def set_suggestions(self, words: List[str]) -> None:
+        """Show up to SUGGESTIONS words; unused buttons are hidden so they cannot be chosen."""
+        for i, b in enumerate(self.suggestion_buttons):
+            word = words[i] if i < len(words) else ""
+            if word != b.label:
+                b.label = word
+                b.label_px = 48 if len(word) <= 11 else max(30, 48 * 11 // len(word))  # long words still fit
+                b.set_state(False, 0.0)
+                b.update()
+            b.setVisible(bool(word))
