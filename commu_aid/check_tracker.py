@@ -75,7 +75,9 @@ def main() -> int:
     if not trackers:
         print("Trackers    none found")
         print("  ! Open Tobii Pro Eye Tracker Manager. If the Spark is not listed, press + (top right)")
-        print("    to install its driver, then unplug and replug the tracker.")
+        print("    to install its driver. If Install is greyed out (newer macOS), install the")
+        print("    Tobii Pro Spark runtime from https://connect.tobii.com/s/spark-downloads instead.")
+        print("    Then unplug and replug the tracker; restart the Mac if it is still not found.")
         return 1
     for et in trackers:
         print(f"Tracker     {et.model}  serial {et.serial_number}  firmware {et.firmware_version}")
