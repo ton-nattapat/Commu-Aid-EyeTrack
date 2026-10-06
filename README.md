@@ -11,7 +11,7 @@ speaks it in Thai.
   Speak translates the typed English to Thai offline (Meta NLLB-200) and speaks the Thai.
 - **Calibration** runs every time the app starts: position check, 5-point calibration,
   validation, then Accept or Retry.
-- **Settings (F3)** let the caregiver change the dwell time (2 to 5 s) and the Needs tiles.
+- **Settings (F3)** let the caregiver change the dwell time (1 to 3 s) and the Needs tiles.
 
 | Needs | Keyboard |
 | --- | --- |

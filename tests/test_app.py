@@ -182,6 +182,17 @@ def test_page_switch_does_not_bounce_back(setup, app):
     assert w.page is w.keyboard_page
 
 
+def test_settings_slider_range_is_one_to_three_seconds(setup, tmp_path):
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.open_settings()
+    assert (w.settings.dwell_slider.minimum(), w.settings.dwell_slider.maximum()) == (10, 30)
+    w.settings.dwell_slider.setValue(10)
+    w.settings.save()
+    assert w.dwell.dwell_time_s == 1.0
+
+
 def test_settings_save_changes_dwell_and_tiles(setup, app, tmp_path):
     make, clock, source, speaker, _ = setup
     w = make()

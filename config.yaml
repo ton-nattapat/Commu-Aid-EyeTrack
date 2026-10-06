@@ -2,7 +2,7 @@
 # The caregiver Settings page (F3) rewrites this file; edit by hand only while the app is closed.
 
 dwell:
-  dwell_time_s: 3.0        # how long the patient must look at a button to select it (2.0 to 5.0)
+  dwell_time_s: 3.0        # how long the patient must look at a button to select it (1.0 to 3.0)
   blink_grace_s: 0.3       # a gap this short (blink, jitter off the button) does not reset the timer
   cooldown_s: 1.0          # after a selection, nothing can be selected for this long
   smoothing_samples: 5     # moving-average window on the gaze point (about 0.08 s at 60 Hz)

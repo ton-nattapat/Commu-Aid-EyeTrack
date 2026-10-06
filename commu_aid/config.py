@@ -9,8 +9,8 @@ from typing import List
 import yaml
 
 NEEDS_TILE_COUNT = 11
-DWELL_MIN_S = 2.0
-DWELL_MAX_S = 5.0
+DWELL_MIN_S = 1.0
+DWELL_MAX_S = 3.0
 
 
 @dataclass
