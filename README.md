@@ -251,12 +251,14 @@ Compared on the simulated tracker (`--simulate`, 60 Hz), with the old 5-sample m
 
 | Level | Shake while looking at a button (RMS) | Time for the point to reach a new button |
 | --- | --- | --- |
-| mild | 7.7 px → 6.1 px | 67 ms → 33 ms |
-| typical | 17.9 px → 10.2 px | 67 ms → 33 ms |
-| hard | 37.3 px → 28.9 px | 67 ms → 33 ms |
+| mild | 7.7 px → 8.6 px | 67 ms → 33 ms |
+| typical | 17.9 px → 12.0 px | 67 ms → 33 ms |
+| hard | 37.3 px → 24.4 px | 67 ms → 33 ms |
 
-If the dot still wobbles off buttons, raise `fixation_radius_px` (up to about 120; buttons are
-at least 146 px apart, centre to centre). If it feels sticky, lower it or `confirm_samples`.
+The default `fixation_radius_px: 120` is set for noisy gaze. Keep it below 146 px, the distance
+between neighbouring button centres. With a steady tracker, 80 holds the point closer to slow
+drift (6.1 px at mild, 10.2 px at typical, 28.9 px at hard). If the point feels sticky, lower
+it or `confirm_samples`.
 `method: one_euro` is a speed-adaptive low-pass filter, and `method: average` brings back the
 old moving average. Press Ctrl+G to watch the dot while you try them.
 

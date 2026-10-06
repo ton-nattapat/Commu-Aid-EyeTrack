@@ -10,7 +10,7 @@ dwell:
 # the filter smooths hard while they hold still and follows a jump within a few samples.
 gaze_filter:
   method: fixation         # fixation (recommended), one_euro, or average (the old moving average)
-  fixation_radius_px: 80   # shake within this distance stays on one point; raise if the dot still wobbles (up to about 120)
+  fixation_radius_px: 120  # shake within this distance stays on one point; lower if the dot feels sticky (buttons are 146 px apart)
   confirm_samples: 3       # samples in a row at a new spot before the point jumps there (3 = 50 ms at 60 Hz)
   hold_s: 0.3              # how much recent gaze the steady point averages; it still follows slow drift
   min_cutoff_hz: 0.5       # one_euro only: lower = steadier when still

@@ -27,7 +27,7 @@ GAZE_FILTER_METHODS = ("fixation", "one_euro", "average")
 class GazeFilterConfig:
     method: str = "fixation"  # fixation | one_euro | average
     # fixation: hold one point per fixation, jump only when the eyes really move
-    fixation_radius_px: float = 80  # shake within this distance stays on the same point
+    fixation_radius_px: float = 120  # shake within this distance stays on the same point
     confirm_samples: int = 3  # this many samples in a row at a new spot make a jump (3 = 50 ms at 60 Hz)
     hold_s: float = 0.3  # the point averages this much recent gaze, so it still follows slow drift
     # one_euro: speed-adaptive low-pass filter
