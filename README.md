@@ -90,6 +90,24 @@ Manage Voices, and add **Kanya** (Thai).
 The first time Speak is used, the translation model downloads from Hugging Face
 (about 2.5 GB) and is cached after that, so the first run needs internet.
 
+### If the app says "No Tobii eye tracker found"
+
+Run the checker in Terminal (with `conda activate commu-aid`):
+
+```bash
+python -m commu_aid.check_tracker
+```
+
+It shows whether the Mac sees the tracker on USB and whether the Tobii SDK finds it. Then:
+
+1. Plug the Spark's own USB-A cable straight into the Mac, using Tobii's USB-C to USB-A adapter
+   if the Mac only has USB-C. Hubs, docks and monitor USB ports often can't supply the power
+   spikes the tracker needs. Unplug, wait a few seconds, plug back in.
+2. If macOS asks whether to allow the accessory to connect, choose **Allow**.
+3. Open **Tobii Pro Eye Tracker Manager**. If the Spark isn't listed, press **+** (top right) to
+   install its driver, then unplug and replug the tracker.
+4. Once Eye Tracker Manager shows the Spark, the checker should list it too.
+
 ## Run
 
 From the project folder, with the environment active (`conda activate commu-aid`):
