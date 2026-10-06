@@ -1,0 +1,15 @@
+# Conda environment for the Communication Aid.
+#   conda env create -f environment.yml
+#   conda activate commu-aid
+# Python must be 3.10: tobii-research only ships wheels for 3.10.
+name: commu-aid
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - -r requirements.txt
+      - -r requirements-tobii.txt
+      - -r requirements-translate.txt
+      - pytest>=8
