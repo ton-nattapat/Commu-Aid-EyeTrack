@@ -43,6 +43,9 @@ class MouseDemoCalibrationSource(MouseGazeSource):
         time.sleep(0.3)
         return True
 
+    def discard(self, x: float, y: float) -> None:
+        pass
+
     def compute(self, screen_w: int, screen_h: int):
         from .tobii_source import CalibrationPointResult
 

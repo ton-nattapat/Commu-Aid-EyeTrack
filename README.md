@@ -13,8 +13,10 @@ speaks it in Thai.
   choosing one finishes the word and adds a space. Prediction is offline and learns from
   every message the patient speaks.
   Speak translates the typed English to Thai offline (Meta NLLB-200) and speaks the Thai.
-- **Calibration** runs every time the app starts: position check, 5-point calibration,
-  validation, then Accept or Retry.
+- **Calibration** runs every time the app starts: position check, 5-point calibration (a point
+  with bad data is shown once more), validation, then Accept or Retry.
+- **Edges:** buttons keep clear of the left, right and bottom screen edges, where the tracker is
+  least accurate, and gaze that lands just past a button still counts for it.
 - **Settings (F3)** let the caregiver change the dwell time (1 to 3 s) and the Needs tiles.
 
 | Needs | Keyboard |
@@ -152,6 +154,32 @@ It shows whether the Mac sees the tracker on USB and whether the Tobii SDK finds
    is an Intel build.
 5. Once the driver is installed, the checker should list the Spark.
 
+### If gaze misses near the screen edges
+
+Some error is normal (the gaze dot sits a little off), but if it grows towards the edges, work
+through these in order, recalibrating (F2) after each change:
+
+1. **Display Setup.** Run `python -m commu_aid.check_tracker`. It compares the screen size the
+   tracker was set up for with the real screen and warns when they differ. If they do, open
+   Tobii Pro Eye Tracker Manager > Display Setup, enter this screen's size and where the Spark
+   is mounted, and save. A wrong size gives exactly this pattern: good in the middle, worse
+   and worse towards the edges. The calibration result screen says so too ("Gaze lands outside
+   every dot") when every miss points away from (or towards) the centre.
+2. **Distance and angle.** The Spark works from about 45 to 95 cm; aim for 60 to 70 cm, with
+   both eyes in the middle of the position box. Tilt the screen so it faces the patient's
+   eyes; the tracker must look up at the eyes, not at the chin or forehead. The bottom
+   corners are hardest, because the eyelids partly cover the eyes when looking down.
+3. **Light and glasses.** Avoid sunlight or a bright lamp behind the patient or shining into
+   the tracker. Glasses can reflect the tracker's light; tilt them slightly or try without.
+4. **Read the result screen.** Each circle is how far off the gaze was at that dot, and the
+   line shows which way it missed. Lines all pointing the same way mean an offset (position);
+   lines all pointing outward or inward mean Display Setup.
+
+The layout already helps: `side_margin_px` and `bottom_margin_px` in `config.yaml` keep buttons
+away from the edges (the keys stay at least 110 px), and `snap_px` lets gaze in a gap or just
+past the edge count for the nearest button. Raising the margins further makes the keys smaller,
+so fix Display Setup and position first.
+
 ## Run
 
 From the project folder, with the environment active (`conda activate commu-aid`):
@@ -204,7 +232,9 @@ uses the saved calibration.
 
 Everything is in [`config.yaml`](config.yaml): dwell time, blink grace, cooldown, the Needs
 tiles and their Thai phrases, translation, voices, and calibration options (for example
-`auto_accept_max_error_px` to accept a good calibration without pressing Enter).
+`auto_accept_max_error_px` to accept a good calibration without pressing Enter, and
+`redo_point_px` to set when a calibration point is collected again), and the edge margins and
+snapping in `display` (see [If gaze misses near the screen edges](#if-gaze-misses-near-the-screen-edges)).
 The Thai phrases should be checked by a Thai speaker; they use the male form (ผม ... ครับ).
 
 The app writes to `~/.commu_aid/`: the saved calibration, generated sounds, and
@@ -228,6 +258,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Dwell engine ─▶
 | `commu_aid/gaze/simulated_source.py` | Simulated tracker: mouse plus jitter, offset, blinks, dropouts |
 | `commu_aid/gaze/filters.py` | Combine both eyes, moving-average smoothing |
 | `commu_aid/dwell.py` | Dwell state machine (no UI code, unit tested) |
+| `commu_aid/targets.py` | Which button the gaze is on, with snapping to the nearest one |
 | `commu_aid/ui/main_window.py` | Full-screen window, gaze loop, page switching |
 | `commu_aid/ui/pages.py` | Needs and Keyboard layouts, word prediction row |
 | `commu_aid/ui/dwell_button.py` | Button that fills up while it is looked at |
@@ -254,4 +285,6 @@ python -m pytest        # in the activated commu-aid environment (pytest comes w
 
 The tests cover the dwell engine with scripted gaze streams, the gaze filters, the simulated
 eye tracker (jitter, offset, drift, blinks, dropouts, repeatable seeds), word prediction, config loading and saving, and the whole window driven by a scripted gaze source (choosing a need,
-the alarm, typing and speaking, word prediction, translation failure, page switching, and settings).
+the alarm, typing and speaking, word prediction, translation failure, page switching, settings,
+edge margins and snapping), and the calibration screen (collecting bad points again, spotting a
+Display Setup problem).

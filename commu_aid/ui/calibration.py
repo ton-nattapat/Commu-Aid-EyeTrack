@@ -1,5 +1,11 @@
 """Start-up calibration: position check, 5-point calibration, validation, then Accept or Retry.
 
+A calibration point whose data came out much worse than the rest (typically a bottom corner, where
+the eyelids cover the eyes from the tracker's view) is shown once more and collected again before
+validation. The result screen draws a line from each dot to where the gaze actually landed, and
+says so when every point misses in the same outward or inward direction, which points at a wrong
+screen size in Tobii Pro Eye Tracker Manager's Display Setup rather than at the patient.
+
 The caregiver drives this screen with the keyboard or mouse:
   Space  start calibration (from the position check)
   Enter  accept the result
@@ -28,6 +34,7 @@ SHRINK_S = 1.2  # target shrinks to draw the eye before data is collected
 SETTLE_S = 0.8  # validation: ignore gaze while the eye moves to the target
 MEASURE_S = 1.0  # validation: average gaze over this long
 GOOD_PX = 60  # under this error a point is shown in the accent colour, above it in orange
+DISPLAY_SETUP_HINT = "check the screen size in Eye Tracker Manager > Display Setup"
 
 BUTTON_STYLE = (
     "QPushButton { background: #24324a; color: #f4f6f8; border: 2px solid #3a4652; border-radius: 16px; }"
@@ -37,24 +44,58 @@ BUTTON_STYLE = (
 
 @dataclass
 class PointError:
-    x: float
+    x: float  # target, 0..1
     y: float
     error_px: Optional[float]
+    gaze: Optional[QPointF] = None  # where the gaze landed on average, canvas coordinates
+
+
+def radial_pattern(points: List[Tuple[float, float, float, float]], centre: Tuple[float, float]) -> Optional[str]:
+    """'outward' or 'inward' when every off-centre miss points away from or towards the screen centre.
+
+    Each point is (target x, target y, gaze x, gaze y) in pixels. A display area set up for a bigger
+    or smaller screen than the real one scales gaze around the centre like this; a patient or head
+    position problem does not. Needs at least 3 off-centre points that each miss by more than GOOD_PX.
+    """
+    signs = []
+    for tx, ty, gx, gy in points:
+        rx, ry = tx - centre[0], ty - centre[1]
+        r = math.hypot(rx, ry)
+        ex, ey = gx - tx, gy - ty
+        err = math.hypot(ex, ey)
+        if r < 1:
+            continue  # the centre point has no outward direction
+        if err <= GOOD_PX:
+            return None
+        radial = (ex * rx + ey * ry) / r
+        if abs(radial) < 0.7 * err:
+            return None  # mostly sideways: not a scale error
+        signs.append(radial > 0)
+    if len(signs) < 3 or len(set(signs)) != 1:
+        return None
+    return "outward" if signs[0] else "inward"
 
 
 class CalibrationScreen(QWidget):
     finished = Signal(str)  # "accepted" | "skipped"
     _worker_done = Signal(object)
 
-    def __init__(self, source, map_to_canvas: Callable[[float, float], QPointF], auto_accept_px: float = 0, parent=None):
+    def __init__(
+        self, source, map_to_canvas: Callable[[float, float], QPointF], auto_accept_px: float = 0,
+        redo_px: float = 0, parent=None,
+    ):
         super().__init__(parent)
         self.source = source
         self.map_to_canvas = map_to_canvas
         self.auto_accept_px = auto_accept_px
+        self.redo_px = redo_px
+        self.points: List[Tuple[float, float]] = list(CALIBRATION_POINTS)  # being collected in this pass
+        self._redone = False
         self.setGeometry(0, 0, theme.CANVAS_W, theme.CANVAS_H)
         self.setFocusPolicy(Qt.StrongFocus)
         self.stage = "position"
         self.message = ""
+        self.hint = ""
         self.point_index = 0
         self.stage_started = 0.0
         self.calibration_ok = False
@@ -98,6 +139,8 @@ class CalibrationScreen(QWidget):
             return
         self._show_buttons()
         self.stage = "calibrate"
+        self.points = list(CALIBRATION_POINTS)
+        self._redone = False
         self.point_index = 0
         self.message = "Look at the dot"
         self.source.enter_calibration()
@@ -126,17 +169,25 @@ class CalibrationScreen(QWidget):
                 self._fail("The tracker could not see the eyes at that point.")
                 return
             self.point_index += 1
-            if self.point_index < len(CALIBRATION_POINTS):
+            if self.point_index < len(self.points):
                 self._begin_point()
             else:
                 self.stage = "computing"
                 self.message = "Computing..."
                 self._run_in_worker(lambda: self.source.compute(theme.CANVAS_W, theme.CANVAS_H))
         elif self.stage == "computing":
-            self.source.leave_calibration()
             ok, points = result
+            if ok and self._redo_bad_points(points):
+                return
+            self.source.leave_calibration()
             self.calibration_ok = ok
-            self.calibration_errors = [PointError(p.x, p.y, p.mean_error_px) for p in points]
+            self.calibration_errors = [
+                PointError(
+                    p.x, p.y, p.mean_error_px,
+                    self.map_to_canvas(p.gaze_x, p.gaze_y) if p.gaze_x is not None else None,
+                )
+                for p in points
+            ]
             if not ok:
                 self._fail("Calibration failed. Check the patient's position and retry.")
                 return
@@ -145,6 +196,28 @@ class CalibrationScreen(QWidget):
             self.validation_errors = []
             self.message = "Look at the dot"
             self._begin_validation_point()
+
+    def _redo_bad_points(self, points) -> bool:
+        """Once per calibration, collect again the points that came out far worse than redo_px. True if started."""
+        if self._redone or self.redo_px <= 0:
+            return False
+        # The tracker reports points back as float32; use our own coordinates when discarding and recollecting.
+        bad = [
+            min(CALIBRATION_POINTS, key=lambda c: math.hypot(c[0] - p.x, c[1] - p.y))
+            for p in points
+            if p.mean_error_px is None or p.mean_error_px > self.redo_px
+        ]
+        if not bad or len(bad) == len(points):
+            return False  # nothing to fix, or everything is bad: a full retry is the better answer
+        self._redone = True
+        for x, y in bad:
+            self.source.discard(x, y)
+        self.points = bad
+        self.point_index = 0
+        self.stage = "calibrate"
+        self.message = "Once more: look at the dot"
+        self._begin_point()
+        return True
 
     def _begin_validation_point(self) -> None:
         self._samples = []
@@ -157,9 +230,10 @@ class CalibrationScreen(QWidget):
             mx = sum(s[0] for s in self._samples) / len(self._samples)
             my = sum(s[1] for s in self._samples) / len(self._samples)
             err = math.hypot(mx - target.x(), my - target.y())
+            gaze = QPointF(mx, my)
         else:
-            err = None
-        self.validation_errors.append(PointError(x, y, err))
+            err, gaze = None, None
+        self.validation_errors.append(PointError(x, y, err, gaze))
         self.point_index += 1
         if self.point_index < len(VALIDATION_POINTS):
             self._begin_validation_point()
@@ -168,6 +242,7 @@ class CalibrationScreen(QWidget):
 
     def _show_result(self) -> None:
         self.stage = "result"
+        self.hint = ""
         errors = [p.error_px for p in self.validation_errors]
         valid = [e for e in errors if e is not None]
         if valid:
@@ -176,6 +251,19 @@ class CalibrationScreen(QWidget):
             self.message = "No gaze was measured during validation"
         if len(valid) < len(errors):
             self.message += f" ({len(errors) - len(valid)} point(s) not seen)"
+        centre = self.map_to_canvas(0.5, 0.5)
+        pattern = radial_pattern(
+            [
+                (t.x(), t.y(), pe.gaze.x(), pe.gaze.y())
+                for pe in self.validation_errors
+                if pe.gaze is not None
+                for t in (self.map_to_canvas(pe.x, pe.y),)
+            ],
+            (centre.x(), centre.y()),
+        )
+        if pattern:
+            where = "outside" if pattern == "outward" else "inside"
+            self.hint = f"Gaze lands {where} every dot: {DISPLAY_SETUP_HINT}"
         self._show_buttons("accept", "retry", "skip")
         if self.auto_accept_px > 0 and len(valid) == len(errors) and max(valid) <= self.auto_accept_px:
             self.message += ". Accepting automatically."
@@ -188,6 +276,7 @@ class CalibrationScreen(QWidget):
             pass
         self.stage = "result"
         self.message = message
+        self.hint = ""
         self.validation_errors = []
         self._show_buttons("retry", "skip")
 
@@ -210,7 +299,7 @@ class CalibrationScreen(QWidget):
         now = time.monotonic()
         if self.stage == "calibrate" and not self._collecting and now - self.stage_started >= SHRINK_S:
             self._collecting = True
-            x, y = CALIBRATION_POINTS[self.point_index]
+            x, y = self.points[self.point_index]
             self._run_in_worker(lambda: self.source.collect(x, y))
         elif self.stage == "validate" and now - self.stage_started >= SETTLE_S + MEASURE_S:
             self._finish_validation_point()
@@ -252,7 +341,7 @@ class CalibrationScreen(QWidget):
         if self.stage == "position":
             self._paint_position(p)
         elif self.stage == "calibrate":
-            self._paint_target(p, CALIBRATION_POINTS[self.point_index], shrink=True)
+            self._paint_target(p, self.points[self.point_index], shrink=True)
         elif self.stage == "validate":
             self._paint_target(p, VALIDATION_POINTS[self.point_index], shrink=False)
         elif self.stage == "computing":
@@ -308,14 +397,22 @@ class CalibrationScreen(QWidget):
         p.drawEllipse(center, 5, 5)
 
     def _paint_result(self, p: QPainter) -> None:
-        self._paint_text(p, "Calibration result", 100, 56)
-        self._paint_text(p, self.message, 180, 34, theme.TEXT_QUIET)
         p.setFont(theme.font(26, bold=True))
         for pe in self.calibration_errors:
             self._paint_error(p, pe, theme.TEXT_QUIET)
         for pe in self.validation_errors:
             color = theme.WARNING if pe.error_px is None or pe.error_px > GOOD_PX else theme.HOVER
             self._paint_error(p, pe, color)
+        self._paint_text(p, "Calibration result", 100, 56)
+        self._paint_text(p, self.message, 180, 34, theme.TEXT_QUIET)
+        if self.hint:
+            # On a backing box: the hint sits over the top validation circles.
+            p.setFont(theme.font(30, bold=True))
+            w = p.fontMetrics().horizontalAdvance(self.hint) + 48
+            p.setPen(QPen(theme.WARNING, 2))
+            p.setBrush(theme.SURFACE)
+            p.drawRoundedRect(QRectF((theme.CANVAS_W - w) / 2, 210, w, 56), 14, 14)
+            self._paint_text(p, self.hint, 238, 30, theme.WARNING)
 
     def _paint_error(self, p: QPainter, pe: PointError, color) -> None:
         center = self.map_to_canvas(pe.x, pe.y)
@@ -323,6 +420,10 @@ class CalibrationScreen(QWidget):
         p.setBrush(Qt.NoBrush)
         radius = max(10.0, min(pe.error_px if pe.error_px is not None else 40.0, 200.0))
         p.drawEllipse(center, radius, radius)
+        if pe.gaze is not None:
+            # Which way the gaze missed: all outward or all inward means a Display Setup problem.
+            p.drawLine(center, pe.gaze)
+            p.drawEllipse(pe.gaze, 5, 5)
         p.drawLine(center + QPointF(-8, 0), center + QPointF(8, 0))
         p.drawLine(center + QPointF(0, -8), center + QPointF(0, 8))
         label = "not seen" if pe.error_px is None else f"{pe.error_px:.0f} px"

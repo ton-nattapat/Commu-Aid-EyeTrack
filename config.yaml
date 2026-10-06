@@ -11,6 +11,10 @@ display:
   width: 1920
   height: 1080
   show_gaze_dot: true      # toggle at runtime with Ctrl+G
+  # The tracker is least accurate near the screen edges, worst at the bottom corners next to it.
+  side_margin_px: 120      # keep buttons this far from the left and right edges (0 to 248)
+  bottom_margin_px: 100    # and this far from the bottom edge (0 to 114; more would shrink keys below 110 px)
+  snap_px: 40              # gaze in a gap or just past the edge still counts for the nearest button this close (0 = off)
 
 language:
   screen: en               # language of the buttons and keyboard
@@ -33,6 +37,7 @@ calibration:
   on_startup: true                 # run calibration every time the app starts
   saved_file: ~/.commu_aid/calibration.bin
   auto_accept_max_error_px: 0      # 0 = caregiver must press Accept; e.g. 60 = accept automatically when every point is within 60 px
+  redo_point_px: 150               # a calibration point with more error than this is shown again once (0 = never)
 
 # Needs page tiles, left to right, top to bottom (11 tiles; the 12th corner tile always opens the keyboard).
 # action: speak = show and speak the Thai phrase; alert = also play the loud caregiver alarm.

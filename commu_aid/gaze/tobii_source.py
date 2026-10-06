@@ -27,6 +27,8 @@ class CalibrationPointResult:
     x: float  # target, 0..1
     y: float
     mean_error_px: Optional[float]  # None when the tracker kept no valid samples for the point
+    gaze_x: Optional[float] = None  # where the gaze landed on average, 0..1 (None with no valid samples)
+    gaze_y: Optional[float] = None
 
 
 def _tr():
@@ -133,6 +135,10 @@ class TobiiGazeSource(GazeSource):
             return True
         return self._calibration.collect_data(x, y) == tr.CALIBRATION_STATUS_SUCCESS
 
+    def discard(self, x: float, y: float) -> None:
+        """Drop the data collected at (x, y) so the point can be collected again before the next compute."""
+        self._calibration.discard_data(x, y)
+
     def compute(self, screen_w: int, screen_h: int) -> Tuple[bool, List[CalibrationPointResult]]:
         tr = _tr()
         result = self._calibration.compute_and_apply()
@@ -140,13 +146,20 @@ class TobiiGazeSource(GazeSource):
         points = []
         for cp in result.calibration_points:
             tx, ty = cp.position_on_display_area
-            errors = []
+            errors, xs, ys = [], [], []
             for sample in cp.calibration_samples:
                 for eye in (sample.left_eye, sample.right_eye):
                     if eye.validity == tr.VALIDITY_VALID_AND_USED:
                         ex, ey = eye.position_on_display_area
                         errors.append((((ex - tx) * screen_w) ** 2 + ((ey - ty) * screen_h) ** 2) ** 0.5)
-            points.append(CalibrationPointResult(tx, ty, sum(errors) / len(errors) if errors else None))
+                        xs.append(ex)
+                        ys.append(ey)
+            if errors:
+                points.append(
+                    CalibrationPointResult(tx, ty, sum(errors) / len(errors), sum(xs) / len(xs), sum(ys) / len(ys))
+                )
+            else:
+                points.append(CalibrationPointResult(tx, ty, None))
         return ok, points
 
     def leave_calibration(self) -> None:

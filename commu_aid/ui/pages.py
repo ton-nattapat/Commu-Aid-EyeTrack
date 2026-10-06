@@ -15,14 +15,13 @@ from ..config import NeedTile
 from . import theme
 from .dwell_button import DwellButton
 
-AREA_W = theme.CANVAS_W - 2 * theme.MARGIN
-AREA_H = theme.GRID_BOTTOM - theme.GRID_TOP
-
 
 class Page(QWidget):
-    def __init__(self, parent=None):
+    """A page of buttons filling `area` (left, top, width, height on the canvas), see theme.content_area."""
+
+    def __init__(self, area=None, parent=None):
         super().__init__(parent)
-        self.setGeometry(theme.MARGIN, theme.GRID_TOP, AREA_W, AREA_H)
+        self.setGeometry(QRect(*(area or theme.content_area())))
         self.buttons: List[DwellButton] = []
 
     def clear_buttons(self) -> None:
@@ -42,16 +41,19 @@ class NeedsPage(Page):
     COLS = 4
     ROWS = 3
 
-    def __init__(self, needs: List[NeedTile], on_need: Callable[[NeedTile], None], on_keyboard: Callable[[], None], parent=None):
-        super().__init__(parent)
+    def __init__(
+        self, needs: List[NeedTile], on_need: Callable[[NeedTile], None], on_keyboard: Callable[[], None],
+        area=None, parent=None,
+    ):
+        super().__init__(area, parent)
         self.on_need = on_need
         self.on_keyboard = on_keyboard
         self.set_needs(needs)
 
     def set_needs(self, needs: List[NeedTile]) -> None:
         self.clear_buttons()
-        w = (AREA_W - (self.COLS - 1) * theme.GAP) // self.COLS
-        h = (AREA_H - (self.ROWS - 1) * theme.GAP) // self.ROWS
+        w = (self.width() - (self.COLS - 1) * theme.GAP) // self.COLS
+        h = (self.height() - (self.ROWS - 1) * theme.GAP) // self.ROWS
 
         def cell(i: int) -> QRect:
             row, col = divmod(i, self.COLS)
@@ -80,11 +82,13 @@ class KeyboardPage(Page):
         on_clear: Callable[[], None],
         on_speak: Callable[[], None],
         on_needs: Callable[[], None],
+        area=None,
         parent=None,
     ):
-        super().__init__(parent)
-        unit_w = (AREA_W - (self.UNITS - 1) * theme.GAP) / self.UNITS
-        row_h = (AREA_H - 4 * theme.GAP) / 5
+        super().__init__(area, parent)
+        area_w, area_h = self.width(), self.height()
+        unit_w = (area_w - (self.UNITS - 1) * theme.GAP) / self.UNITS
+        row_h = (area_h - 4 * theme.GAP) / 5
 
         def rect(col: float, row: int, span: float = 1) -> QRect:
             x = col * (unit_w + theme.GAP)
@@ -92,7 +96,7 @@ class KeyboardPage(Page):
             return QRect(round(x), round(row * (row_h + theme.GAP)), round(w), round(row_h))
 
         # Row 0: predicted words. Picking one finishes the current word and adds a space.
-        word_w = (AREA_W - (self.SUGGESTIONS - 1) * theme.GAP) / self.SUGGESTIONS
+        word_w = (area_w - (self.SUGGESTIONS - 1) * theme.GAP) / self.SUGGESTIONS
         self.suggestion_buttons: List[DwellButton] = []
         for i in range(self.SUGGESTIONS):
             b = DwellButton(("word", i), "", lambda i=i: on_word(self.suggestion_buttons[i].label), label_px=48, variant="word")

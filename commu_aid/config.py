@@ -26,6 +26,9 @@ class DisplayConfig:
     width: int = 1920
     height: int = 1080
     show_gaze_dot: bool = True
+    side_margin_px: int = 120  # buttons keep this far from the left and right screen edges
+    bottom_margin_px: int = 100  # and this far from the bottom edge, nearest the tracker
+    snap_px: int = 40  # gaze in a gap or just past the edge counts for the nearest button this close
 
 
 @dataclass
@@ -56,6 +59,7 @@ class CalibrationConfig:
     on_startup: bool = True
     saved_file: str = "~/.commu_aid/calibration.bin"
     auto_accept_max_error_px: float = 0
+    redo_point_px: float = 150  # recollect a calibration point once when its error is above this (0 = never)
 
     @property
     def saved_path(self) -> Path:
