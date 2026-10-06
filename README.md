@@ -81,6 +81,45 @@ uv pip install -r requirements-translate.txt  # offline translation (large: torc
 
 ### One-time setup on the Mac
 
+#### Install the Tobii Pro Spark driver (runtime)
+
+The Tobii SDK can't see the Spark until Tobii's Spark runtime is installed. Eye Tracker
+Manager's own driver installer (+ > Tobii Pro Spark > Install) only supports macOS 13 and 14,
+so on newer macOS its Install button stays greyed out. Install the runtime directly instead:
+
+1. Sign in at [connect.tobii.com/s/spark-downloads](https://connect.tobii.com/s/spark-downloads)
+   ("Tobii Pro Spark downloads") and click **Download** under **macOS**. You get
+   `TobiiProSpark_2.2.3.0_x64.dmg` (version 2.2.3.0 is the one tested here).
+2. Open the `.dmg` and double-click **install-driver**. A Terminal window opens.
+   If macOS blocks it, go to System Settings > Privacy & Security, scroll down and click
+   **Open Anyway**.
+3. At `Password:` type your Mac login password (nothing shows while you type) and press Return.
+4. Wait for:
+
+   ```text
+   I: Installing platform_runtime_IS5LPROENTRY_MAC_x64_service to /Library/Application Support/Tobii/PlatformRuntimes
+   I: Installing com.tobii.pdk.runtime.IS5LPROENTRY.plist to /Library/LaunchDaemons
+   I: Starting com.tobii.pdk.runtime.IS5LPROENTRY.plist
+   Runtime Service 2.2.3.0 Installed
+   ```
+
+   then close the Terminal window when it says `[Process completed]`.
+5. Plug the Spark straight into the Mac (Tobii's USB-C to USB-A adapter is fine). If it was
+   already plugged in, unplug it, wait a few seconds and plug it back in.
+6. Check that the SDK finds it:
+
+   ```bash
+   conda activate commu-aid
+   python -m commu_aid.check_tracker
+   ```
+
+   It should print a line like `Tracker     Tobii Pro Spark  serial TPE01-...`.
+
+Don't commit the `.dmg` to this repo: it is Tobii's software, so download it from Tobii Connect
+on each Mac.
+
+#### Display, Thai voice and translation
+
 Once only, in **Tobii Pro Eye Tracker Manager**, run Display Setup so the tracker knows the
 monitor's size and position. The app's layout is fixed at 1920x1080.
 
@@ -106,14 +145,12 @@ It shows whether the Mac sees the tracker on USB and whether the Tobii SDK finds
 2. If macOS asks whether to allow the accessory to connect, choose **Allow**.
 3. Open **Tobii Pro Eye Tracker Manager**. If the Spark isn't listed, press **+** (top right) to
    install its driver, then unplug and replug the tracker.
-4. If Install is greyed out (Eye Tracker Manager only lists macOS 13 and 14 for the Spark), install
-   the **Tobii Pro Spark runtime** for macOS from
-   [connect.tobii.com/s/spark-downloads](https://connect.tobii.com/s/spark-downloads) instead. It
-   runs in Terminal and asks for your Mac password. Version 2.2.3.0
-   (`TobiiProSpark_2.2.3.0_x64.dmg`) works on our MacBook Air. The service is an Intel build, so an Apple
-   silicon Mac needs Rosetta (`softwareupdate --install-rosetta --agree-to-license`). Unplug and
-   replug the tracker afterwards, and restart the Mac if it still isn't found.
-5. Once Eye Tracker Manager shows the Spark, the checker should list it too.
+4. If Install is greyed out, install the Spark runtime directly as described in
+   [Install the Tobii Pro Spark driver](#install-the-tobii-pro-spark-driver-runtime). If the
+   tracker still isn't found, restart the Mac. On an Apple silicon Mac, also make sure Rosetta is
+   installed (`softwareupdate --install-rosetta --agree-to-license`), since the runtime service
+   is an Intel build.
+5. Once the driver is installed, the checker should list the Spark.
 
 ## Run
 
