@@ -10,7 +10,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
@@ -23,12 +23,33 @@ class TrackerNotFound(RuntimeError):
 
 
 @dataclass
+class EyeSample:
+    """One eye's gaze in one calibration sample, 0..1 across the monitor."""
+
+    eye: str  # "left" | "right"
+    x: float
+    y: float
+    used: bool = True  # False: valid, but the tracker left it out of the calibration
+
+
+@dataclass
 class CalibrationPointResult:
     x: float  # target, 0..1
     y: float
     mean_error_px: Optional[float]  # None when the tracker kept no valid samples for the point
     gaze_x: Optional[float] = None  # where the gaze landed on average, 0..1 (None with no valid samples)
     gaze_y: Optional[float] = None
+    samples: List[EyeSample] = field(default_factory=list)  # every valid eye sample collected at the point
+
+
+def _eye(d: dict, side: str) -> Optional[Tuple[float, float]]:
+    """One eye's gaze point from a gaze data dict, or None when the tracker marks it invalid."""
+    if not d[f"{side}_gaze_point_validity"]:
+        return None
+    x, y = d[f"{side}_gaze_point_on_display_area"][:2]
+    if x != x or y != y:  # NaN
+        return None
+    return (x, y)
 
 
 def _tr():
@@ -98,17 +119,13 @@ class TobiiGazeSource(GazeSource):
             return self._position
 
     def _on_gaze(self, d: dict) -> None:
-        point = combine_eyes(
-            d["left_gaze_point_on_display_area"],
-            bool(d["left_gaze_point_validity"]),
-            d["right_gaze_point_on_display_area"],
-            bool(d["right_gaze_point_validity"]),
-        )
+        left, right = _eye(d, "left"), _eye(d, "right")
+        point = combine_eyes(left, left is not None, right, right is not None)
         now = time.monotonic()
         if point is None:
             self._samples.put(GazeSample(now, valid=False))
         else:
-            self._samples.put(GazeSample(now, point[0], point[1], True))
+            self._samples.put(GazeSample(now, point[0], point[1], True, left, right))
 
     def _on_position(self, d: dict) -> None:
         def eye(side: str) -> Optional[EyePosition]:
@@ -146,20 +163,26 @@ class TobiiGazeSource(GazeSource):
         points = []
         for cp in result.calibration_points:
             tx, ty = cp.position_on_display_area
-            errors, xs, ys = [], [], []
+            errors, xs, ys, samples = [], [], [], []
             for sample in cp.calibration_samples:
-                for eye in (sample.left_eye, sample.right_eye):
-                    if eye.validity == tr.VALIDITY_VALID_AND_USED:
-                        ex, ey = eye.position_on_display_area
+                for side, eye in (("left", sample.left_eye), ("right", sample.right_eye)):
+                    if eye.validity == tr.VALIDITY_INVALID_AND_NOT_USED:
+                        continue
+                    ex, ey = eye.position_on_display_area
+                    used = eye.validity == tr.VALIDITY_VALID_AND_USED
+                    samples.append(EyeSample(side, ex, ey, used))
+                    if used:
                         errors.append((((ex - tx) * screen_w) ** 2 + ((ey - ty) * screen_h) ** 2) ** 0.5)
                         xs.append(ex)
                         ys.append(ey)
             if errors:
                 points.append(
-                    CalibrationPointResult(tx, ty, sum(errors) / len(errors), sum(xs) / len(xs), sum(ys) / len(ys))
+                    CalibrationPointResult(
+                        tx, ty, sum(errors) / len(errors), sum(xs) / len(xs), sum(ys) / len(ys), samples
+                    )
                 )
             else:
-                points.append(CalibrationPointResult(tx, ty, None))
+                points.append(CalibrationPointResult(tx, ty, None, samples=samples))
         return ok, points
 
     def leave_calibration(self) -> None:

@@ -14,7 +14,10 @@ speaks it in Thai.
   every message the patient speaks.
   Speak translates the typed English to Thai offline (Meta NLLB-200) and speaks the Thai.
 - **Calibration** runs every time the app starts: position check, 5-point calibration (a point
-  with bad data is shown once more), validation, then Accept or Retry.
+  with bad data is shown once more), validation, then Accept or Retry. The position check draws a face
+  outline that follows the patient's head (bigger when closer, tilted with the eyes) over a dashed
+  outline of where it should be. The live gaze is drawn
+  throughout, and the result plots every gaze sample collected at each point, per eye.
 - **Edges:** buttons keep clear of the left, right and bottom screen edges, where the tracker is
   least accurate, and gaze that lands just past a button still counts for it.
 - **Settings (F3)** let the caregiver change the dwell time (1 to 3 s) and the Needs tiles.
@@ -226,7 +229,14 @@ Caregiver keys:
 On a Mac keyboard, hold **fn** to use F2, F3 and F11.
 
 On the calibration screen: **Space** starts, **Enter** accepts, **R** retries, **Esc** skips and
-uses the saved calibration.
+uses the saved calibration, **G** shows or hides the live gaze, and **S** shows or hides the gaze
+samples on the result screen. The live gaze is unfiltered, so it shows what the tracker reports;
+if the patient follows the dot instead of the target, press **G** (or set
+`calibration.show_live_gaze: false`).
+
+The result screen plots every gaze sample behind each point: blue for the left eye, pink for the
+right, hollow for samples the tracker left out of the calibration. A tight cluster off the dot is
+an offset; a wide cloud is noise; one eye's cluster away from the other's points at that eye.
 
 ## Settings
 
@@ -312,4 +322,4 @@ The tests cover the dwell engine with scripted gaze streams, the gaze filters, t
 eye tracker (jitter, offset, drift, blinks, dropouts, repeatable seeds), word prediction, config loading and saving, and the whole window driven by a scripted gaze source (choosing a need,
 the alarm, typing and speaking, word prediction, translation failure, page switching, settings,
 edge margins and snapping), and the calibration screen (collecting bad points again, spotting a
-Display Setup problem).
+Display Setup problem, keeping every gaze sample per eye, the live gaze).

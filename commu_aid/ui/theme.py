@@ -42,6 +42,9 @@ TEXT = QColor("#f4f6f8")
 TEXT_QUIET = QColor("#a8b3bd")
 WARNING = QColor("#ff9f6b")
 GAZE_DOT = QColor(80, 170, 255, 170)
+LEFT_EYE = QColor("#5aa9ff")  # calibration samples and live gaze, per eye
+RIGHT_EYE = QColor("#ff6b9a")
+BOTH_EYES = QColor("#7ee0a1")  # a sample with no per-eye data (mouse or simulated gaze)
 
 
 def font(size_px: int, bold: bool = False) -> QFont:

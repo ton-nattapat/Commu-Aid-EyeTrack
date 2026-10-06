@@ -163,7 +163,7 @@ class MainWindow(QGraphicsView):
         for raw in self.source.poll():
             self.last_sample = self.smoother.add(raw)
             if self.calibration is not None:
-                self.calibration.feed(self.last_sample)
+                self.calibration.feed(raw)  # unfiltered: the calibration screen shows and measures every sample
 
         if self.calibration is not None or self.settings.isVisible():
             self.gaze_dot.set_point(None)
@@ -293,7 +293,7 @@ class MainWindow(QGraphicsView):
         self.close_settings()
         self.calibration = CalibrationScreen(
             self.source, self.map_to_canvas, self.cfg.calibration.auto_accept_max_error_px,
-            self.cfg.calibration.redo_point_px, self.canvas,
+            self.cfg.calibration.redo_point_px, self.canvas, show_live_gaze=self.cfg.calibration.show_live_gaze,
         )
         self.calibration.finished.connect(self._on_calibration_finished)
         self.calibration.show()

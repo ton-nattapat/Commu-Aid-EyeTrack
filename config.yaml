@@ -49,6 +49,7 @@ calibration:
   saved_file: ~/.commu_aid/calibration.bin
   auto_accept_max_error_px: 0      # 0 = caregiver must press Accept; e.g. 60 = accept automatically when every point is within 60 px
   redo_point_px: 150               # a calibration point with more error than this is shown again once (0 = never)
+  show_live_gaze: true             # draw the gaze live on the calibration screen; G toggles it there
 
 # Needs page tiles, left to right, top to bottom (11 tiles; the 12th corner tile always opens the keyboard).
 # action: speak = show and speak the Thai phrase; alert = also play the loud caregiver alarm.
