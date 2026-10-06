@@ -17,6 +17,7 @@ BACKGROUND = QColor("#101418")
 SURFACE = QColor("#1e252d")
 SURFACE_NAV = QColor("#24324a")
 SURFACE_ALERT = QColor("#4a2024")
+SURFACE_WORD = QColor("#1d3a3a")  # word prediction buttons
 BORDER = QColor("#3a4652")
 HOVER = QColor("#f2c94c")
 PROGRESS = QColor(242, 201, 76, 110)

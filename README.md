@@ -8,6 +8,9 @@ speaks it in Thai.
   Suction, Yes, No, Call caregiver) and a Keyboard tile. Each tile speaks a fixed Thai phrase.
   Call caregiver also plays a loud alarm.
 - **Page 2, Keyboard:** QWERTY letters, Space, Delete, Clear, Speak, and Needs to go back.
+  Four word buttons above the letters predict the word being typed (or the next word);
+  choosing one finishes the word and adds a space. Prediction is offline and learns from
+  every message the patient speaks.
   Speak translates the typed English to Thai offline (Meta NLLB-200) and speaks the Thai.
 - **Calibration** runs every time the app starts: position check, 5-point calibration,
   validation, then Accept or Retry.
@@ -119,7 +122,8 @@ tiles and their Thai phrases, translation, voices, and calibration options (for 
 The Thai phrases should be checked by a Thai speaker; they use the male form (ผม ... ครับ).
 
 The app writes to `~/.commu_aid/`: the saved calibration, generated sounds, and
-`messages.log` (every message with a time stamp).
+`messages.log` (every message with a time stamp), and `words.json` (the words and word pairs
+the patient has spoken, used to rank predictions; delete it to start fresh).
 
 ## How it works
 
@@ -139,6 +143,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Dwell engine ─▶
 | `commu_aid/ui/pages.py` | Needs and Keyboard layouts |
 | `commu_aid/ui/calibration.py` | Start-up calibration screen |
 | `commu_aid/ui/settings.py` | Caregiver settings |
+| `commu_aid/predict.py` | Offline word prediction (10,000 common words, care words, learning) |
 | `commu_aid/speech.py` | Offline text-to-speech (`say` on macOS, pyttsx3 elsewhere) |
 | `commu_aid/translate.py` | Offline English to Thai with NLLB-200 |
 
@@ -155,4 +160,4 @@ python -m pytest        # in the activated commu-aid environment (pytest comes w
 
 The tests cover the dwell engine with scripted gaze streams, the gaze filters, config
 loading and saving, and the whole window driven by a scripted gaze source (choosing a need,
-the alarm, typing and speaking, translation failure, page switching, and settings).
+the alarm, typing and speaking, word prediction, translation failure, page switching, and settings).
