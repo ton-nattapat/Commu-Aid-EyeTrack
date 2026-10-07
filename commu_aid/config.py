@@ -11,6 +11,7 @@ import yaml
 NEEDS_TILE_COUNT = 11
 DWELL_MIN_S = 1.0
 DWELL_MAX_S = 3.0
+DWELL_STEP_S = 0.5  # the Settings slider and its - / + buttons move in these steps
 
 
 @dataclass
