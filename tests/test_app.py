@@ -4,7 +4,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPointF  # noqa: E402
+from PySide6.QtCore import QPoint, QPointF  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from commu_aid.config import load_config  # noqa: E402
@@ -94,7 +94,7 @@ def setup(app, monkeypatch, tmp_path):
 
 def look_at(window, source, button):
     """Point the scripted gaze at the centre of a button."""
-    centre = button.geometry().center() + button.parentWidget().pos()
+    centre = button.mapTo(window.canvas, button.rect().center())
     view_pt = window.mapFromScene(QPointF(centre))
     global_pt = window.mapToGlobal(view_pt)
     geo = window.screen().geometry()
@@ -145,7 +145,7 @@ def test_type_and_speak_translates_to_thai(setup, app):
         source.point = None
         dwell(w, clock, app, 1.2)
     assert w.typed == "HI"
-    look_at(w, source, button(w.keyboard_page, "speak"))
+    look_at(w, source, w.speak_button)
     dwell(w, clock, app, 3.2)
     for _ in range(50):
         app.processEvents()
@@ -160,7 +160,7 @@ def test_translation_failure_speaks_english(setup, app):
     w = make(FakeTranslator(fail=True))
     w.show_page(w.keyboard_page)
     w.typed = "water please"
-    look_at(w, source, button(w.keyboard_page, "speak"))
+    look_at(w, source, w.speak_button)
     dwell(w, clock, app, 3.2)
     for _ in range(50):
         app.processEvents()
@@ -268,11 +268,11 @@ def test_keyboard_targets_stay_large(setup):
 def test_buttons_stay_clear_of_the_screen_edges(setup):
     w = setup[0]()
     d = w.cfg.display
-    for page in (w.needs_page, w.keyboard_page):
-        for b in page.buttons:
-            left = page.x() + b.x()
-            assert left >= d.side_margin_px and left + b.width() <= 1920 - d.side_margin_px, b.key
-            assert page.y() + b.y() + b.height() <= 1080 - d.bottom_margin_px, b.key
+    buttons = [*w.needs_page.buttons, *w.keyboard_page.buttons, w.pause_button, w.speak_button, w.pause_screen.resume_button]
+    for b in buttons:
+        pos = b.mapTo(w.canvas, QPoint(0, 0))
+        assert pos.x() >= d.side_margin_px and pos.x() + b.width() <= 1920 - d.side_margin_px, b.key
+        assert pos.y() + b.height() <= 1080 - d.bottom_margin_px, b.key
 
 
 def test_gaze_just_past_the_bottom_edge_still_selects(setup, app):
@@ -286,3 +286,62 @@ def test_gaze_just_past_the_bottom_edge_still_selects(setup, app):
     source.point = (x, y + (space.height() / 2 + 25) / 1080)  # 25 px below the key, towards the tracker
     dwell(w, clock, app, 3.2)
     assert w.typed == "HI "
+
+
+def test_pause_turns_off_every_button_until_resume(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    look_at(w, source, w.pause_button)
+    dwell(w, clock, app, 3.2)
+    assert w.paused
+    # A long look at a tile does nothing while resting.
+    look_at(w, source, button(w.needs_page, ("need", 0)))
+    dwell(w, clock, app, 5.0)
+    assert speaker.spoken == []
+    # Resume needs the longer resume dwell, not the normal one.
+    resume = w.pause_screen.resume_button
+    look_at(w, source, resume)
+    dwell(w, clock, app, 3.2)
+    assert w.paused and resume.progress > 0.7
+    dwell(w, clock, app, 1.0)
+    assert not w.paused
+    # Buttons work again.
+    source.point = None
+    dwell(w, clock, app, 1.2)
+    look_at(w, source, button(w.needs_page, ("need", 0)))
+    dwell(w, clock, app, 3.2)
+    assert speaker.spoken == [("ผมหิวน้ำครับ", "th")]
+
+
+def test_glance_at_resume_does_not_wake(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.pause()
+    look_at(w, source, w.pause_screen.resume_button)
+    dwell(w, clock, app, 2.0)
+    source.point = None
+    dwell(w, clock, app, 1.0)
+    look_at(w, source, w.pause_screen.resume_button)
+    dwell(w, clock, app, 2.0)
+    assert w.paused  # two short looks never add up to the full resume dwell
+
+
+def test_caregiver_key_toggles_pause(setup):
+    w = setup[0]()
+    w.toggle_pause()
+    assert w.paused
+    w.toggle_pause()
+    assert not w.paused
+
+
+def test_speak_sits_beside_pause_on_the_keyboard_page_only(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    assert w.speak_button.isHidden()
+    w.show_page(w.keyboard_page)
+    assert w.speak_button.isVisible()
+    assert w.speak_button.y() == w.pause_button.y()
+    assert w.speak_button.geometry().right() < w.pause_button.x()
+    assert w.bar.geometry().right() < w.speak_button.x()
+    w.show_page(w.needs_page)
+    assert w.speak_button.isHidden()

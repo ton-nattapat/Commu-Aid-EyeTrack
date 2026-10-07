@@ -85,6 +85,11 @@ class CalibrationConfig:
 
 
 @dataclass
+class PauseConfig:
+    resume_dwell_s: float = 4.0  # look at Resume this long to come back; longer than dwell so a passing glance does not
+
+
+@dataclass
 class NeedTile:
     label: str
     thai: str
@@ -101,6 +106,7 @@ class AppConfig:
     translation: TranslationConfig = field(default_factory=TranslationConfig)
     speech: SpeechConfig = field(default_factory=SpeechConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
+    pause: PauseConfig = field(default_factory=PauseConfig)
     needs: List[NeedTile] = field(default_factory=list)
     path: Path | None = None
 
@@ -145,6 +151,7 @@ def load_config(path: Path | str) -> AppConfig:
         translation=_section(TranslationConfig, raw.get("translation")),
         speech=_section(SpeechConfig, raw.get("speech")),
         calibration=_section(CalibrationConfig, raw.get("calibration")),
+        pause=_section(PauseConfig, raw.get("pause")),
         needs=needs,
         path=path,
     )

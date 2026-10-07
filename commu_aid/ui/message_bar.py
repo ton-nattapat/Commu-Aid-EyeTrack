@@ -42,8 +42,12 @@ class MessageBar(QWidget):
         inner = r.adjusted(40, 16, -40, -16)
         english = self.english + ("|" if self.typing else "")
         p.setPen(theme.TEXT)
-        p.setFont(theme.font(72, bold=True))
         top = QRectF(inner.left(), inner.top(), inner.width(), inner.height() * 0.55)
+        size = 72
+        p.setFont(theme.font(size, bold=True))
+        while not self.typing and size > 48 and p.fontMetrics().horizontalAdvance(english) > top.width():
+            size -= 4  # a long status message shrinks to fit; typed text keeps its size and scrolls instead
+            p.setFont(theme.font(size, bold=True))
         p.drawText(top, Qt.AlignLeft | Qt.AlignVCenter, _elide_left(p, english, top.width()))
 
         bottom = QRectF(inner.left(), inner.top() + inner.height() * 0.55, inner.width(), inner.height() * 0.45)
