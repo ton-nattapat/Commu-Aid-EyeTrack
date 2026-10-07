@@ -18,7 +18,7 @@ from typing import Optional
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QKeySequence, QPainter, QShortcut
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QWidget
+from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QLabel, QWidget
 
 from ..config import AppConfig, NeedTile
 from ..dwell import DwellEngine
@@ -41,6 +41,7 @@ log = logging.getLogger(__name__)
 
 DATA_DIR = Path("~/.commu_aid").expanduser()
 PAUSE_W = 260
+SETTINGS_HINT_MIN_H = 30  # with a smaller bottom margin there is no room for the hint below the buttons
 
 
 class Canvas(QWidget):
@@ -108,6 +109,15 @@ class MainWindow(QGraphicsView):
         )
         self.page: Page = self.needs_page
         self.keyboard_page.hide()
+
+        # A quiet hint for the nurse in the strip below the buttons; Settings, Pause and calibration cover it.
+        self.settings_hint = QLabel("Caregiver: press F3 for Settings  (fn + F3 on a Mac)", self.canvas)
+        self.settings_hint.setFont(theme.font(22))
+        self.settings_hint.setStyleSheet(f"color: {theme.TEXT_QUIET.name()}; background: transparent;")
+        self.settings_hint.setAlignment(Qt.AlignCenter)
+        hint_top = area[1] + area[3]
+        self.settings_hint.setGeometry(0, hint_top, theme.CANVAS_W, theme.CANVAS_H - hint_top)
+        self.settings_hint.setVisible(theme.CANVAS_H - hint_top >= SETTINGS_HINT_MIN_H)
 
         self.settings = SettingsPage(cfg, self._apply_settings, self.close_settings, self.canvas)
         self.settings.hide()

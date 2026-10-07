@@ -182,15 +182,42 @@ def test_page_switch_does_not_bounce_back(setup, app):
     assert w.page is w.keyboard_page
 
 
-def test_settings_slider_range_is_one_to_three_seconds(setup, tmp_path):
+def test_settings_hint_sits_below_the_buttons_and_hides_under_settings(setup):
+    make = setup[0]
+    w = make()
+    hint = w.settings_hint
+    assert hint.isVisible() and "F3" in hint.text()
+    lowest = max(b.mapTo(w.canvas, b.rect().bottomLeft()).y() for b in w.page.buttons)
+    assert hint.geometry().top() > lowest
+    w.open_settings()
+    assert w.settings.geometry().contains(hint.geometry())
+
+
+def test_settings_slider_is_one_to_three_seconds_in_half_second_steps(setup, tmp_path):
     make = setup[0]
     w = make()
     w.cfg.path = tmp_path / "config.yaml"
     w.open_settings()
-    assert (w.settings.dwell_slider.minimum(), w.settings.dwell_slider.maximum()) == (10, 30)
-    w.settings.dwell_slider.setValue(10)
+    assert (w.settings.dwell_slider.minimum(), w.settings.dwell_slider.maximum()) == (2, 6)
+    w.settings.dwell_slider.setValue(2)
+    assert w.settings.dwell_value.text() == "1.0 s"
+    assert not w.settings.dwell_less.isEnabled()
+    w.settings.dwell_more.click()
+    assert w.settings.dwell_value.text() == "1.5 s"
     w.settings.save()
-    assert w.dwell.dwell_time_s == 1.0
+    assert w.dwell.dwell_time_s == 1.5
+
+
+def test_settings_snaps_an_odd_dwell_time_to_the_nearest_half_second(setup, tmp_path):
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.cfg.dwell.dwell_time_s = 2.3
+    w.open_settings()
+    assert w.settings.dwell_value.text() == "2.5 s"
+    w.settings.dwell_less.click()
+    w.settings.save()
+    assert w.dwell.dwell_time_s == 2.0
 
 
 def test_settings_save_changes_dwell_and_tiles(setup, app, tmp_path):
@@ -198,7 +225,7 @@ def test_settings_save_changes_dwell_and_tiles(setup, app, tmp_path):
     w = make()
     w.cfg.path = tmp_path / "config.yaml"
     w.open_settings()
-    w.settings.dwell_slider.setValue(20)
+    w.settings.dwell_slider.setValue(4)
     w.settings.table.item(0, 1).setText("Water")
     w.settings.save()
     assert w.dwell.dwell_time_s == 2.0

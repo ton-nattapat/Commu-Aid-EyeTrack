@@ -23,7 +23,8 @@ speaks it in Thai.
 - **Pause (top right)** rests the screen while the patient watches TV or talks: every button
   turns off except one large **Resume** button at the top centre, which needs a longer look
   (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
-- **Settings (F3)** let the caregiver change the dwell time (1 to 3 s) and the Needs tiles.
+- **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.5 s steps) and the Needs tiles.
+  A small line at the bottom of the Needs and Keyboard pages reminds the nurse which key opens it.
 
 | Needs | Keyboard |
 | --- | --- |
