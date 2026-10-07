@@ -80,7 +80,6 @@ class KeyboardPage(Page):
         on_word: Callable[[str], None],
         on_delete: Callable[[], None],
         on_clear: Callable[[], None],
-        on_speak: Callable[[], None],
         on_needs: Callable[[], None],
         area=None,
         parent=None,
@@ -109,9 +108,9 @@ class KeyboardPage(Page):
             for c, ch in enumerate(letters):
                 self.add(DwellButton(("key", ch), ch, lambda ch=ch: on_letter(ch), label_px=64), rect(offsets[r] + c, r + 1))
         self.add(DwellButton("delete", "Delete", on_delete, label_px=44), rect(7, 3, 3))
-        self.add(DwellButton("space", "Space", lambda: on_letter(" "), label_px=44), rect(0, 4, 4))
-        self.add(DwellButton("clear", "Clear", on_clear, label_px=44), rect(4, 4, 2))
-        self.add(DwellButton("speak", "Speak", on_speak, icon="🔊", label_px=44, variant="nav"), rect(6, 4, 2))
+        # Speak sits in the top row beside Pause (see MainWindow), away from the letters.
+        self.add(DwellButton("space", "Space", lambda: on_letter(" "), label_px=44), rect(0, 4, 5))
+        self.add(DwellButton("clear", "Clear", on_clear, label_px=44), rect(5, 4, 3))
         self.add(DwellButton("nav", "Needs", on_needs, icon="🏠", label_px=44, variant="nav"), rect(8, 4, 2))
 
     def set_suggestions(self, words: List[str]) -> None:

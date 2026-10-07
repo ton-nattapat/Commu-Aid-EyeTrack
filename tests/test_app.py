@@ -145,7 +145,7 @@ def test_type_and_speak_translates_to_thai(setup, app):
         source.point = None
         dwell(w, clock, app, 1.2)
     assert w.typed == "HI"
-    look_at(w, source, button(w.keyboard_page, "speak"))
+    look_at(w, source, w.speak_button)
     dwell(w, clock, app, 3.2)
     for _ in range(50):
         app.processEvents()
@@ -160,7 +160,7 @@ def test_translation_failure_speaks_english(setup, app):
     w = make(FakeTranslator(fail=True))
     w.show_page(w.keyboard_page)
     w.typed = "water please"
-    look_at(w, source, button(w.keyboard_page, "speak"))
+    look_at(w, source, w.speak_button)
     dwell(w, clock, app, 3.2)
     for _ in range(50):
         app.processEvents()
@@ -268,7 +268,7 @@ def test_keyboard_targets_stay_large(setup):
 def test_buttons_stay_clear_of_the_screen_edges(setup):
     w = setup[0]()
     d = w.cfg.display
-    buttons = [*w.needs_page.buttons, *w.keyboard_page.buttons, w.pause_button, w.pause_screen.resume_button]
+    buttons = [*w.needs_page.buttons, *w.keyboard_page.buttons, w.pause_button, w.speak_button, w.pause_screen.resume_button]
     for b in buttons:
         pos = b.mapTo(w.canvas, QPoint(0, 0))
         assert pos.x() >= d.side_margin_px and pos.x() + b.width() <= 1920 - d.side_margin_px, b.key
@@ -332,3 +332,16 @@ def test_caregiver_key_toggles_pause(setup):
     assert w.paused
     w.toggle_pause()
     assert not w.paused
+
+
+def test_speak_sits_beside_pause_on_the_keyboard_page_only(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    assert w.speak_button.isHidden()
+    w.show_page(w.keyboard_page)
+    assert w.speak_button.isVisible()
+    assert w.speak_button.y() == w.pause_button.y()
+    assert w.speak_button.geometry().right() < w.pause_button.x()
+    assert w.bar.geometry().right() < w.speak_button.x()
+    w.show_page(w.needs_page)
+    assert w.speak_button.isHidden()

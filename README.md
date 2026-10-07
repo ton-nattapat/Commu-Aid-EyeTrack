@@ -12,7 +12,7 @@ speaks it in Thai.
   Four word buttons above the letters predict the word being typed (or the next word);
   choosing one finishes the word and adds a space. Prediction is offline and learns from
   every message the patient speaks.
-  Speak translates the typed English to Thai offline (Meta NLLB-200) and speaks the Thai.
+  Speak, at the top beside Pause, translates the typed English to Thai offline (Meta NLLB-200) and speaks the Thai.
 - **Calibration** runs every time the app starts: position check, 5-point calibration (a point
   with bad data is shown once more), validation, then Accept or Retry. The position check draws a face
   outline that follows the patient's head (bigger when closer, tilted with the eyes) over a dashed

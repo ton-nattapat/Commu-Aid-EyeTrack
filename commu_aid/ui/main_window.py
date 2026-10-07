@@ -89,15 +89,21 @@ class MainWindow(QGraphicsView):
         self.pause_button = DwellButton("pause", "Pause", self.pause, icon="⏸️", variant="nav", label_px=44)
         self.pause_button.setParent(self.canvas)
         self.pause_button.setGeometry(pause_x, theme.BAR_Y, PAUSE_W, theme.BAR_H)
+        # On the keyboard page Speak sits beside Pause, and the message bar gives up the room for it.
+        speak_x = pause_x - theme.GAP - PAUSE_W
+        self.speak_button = DwellButton("speak", "Speak", self._on_speak, icon="🔊", variant="nav", label_px=44)
+        self.speak_button.setParent(self.canvas)
+        self.speak_button.setGeometry(speak_x, theme.BAR_Y, PAUSE_W, theme.BAR_H)
         self.bar = MessageBar(self.canvas)
-        self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, pause_x - theme.GAP - theme.MARGIN, theme.BAR_H)
+        self._bar_widths = {"needs": pause_x - theme.GAP - theme.MARGIN, "keyboard": speak_x - theme.GAP - theme.MARGIN}
+        self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, self._bar_widths["needs"], theme.BAR_H)
 
         self.needs_page = NeedsPage(
             cfg.needs, self._on_need, lambda: self.show_page(self.keyboard_page), area, self.canvas
         )
         self.predictor = Predictor(DATA_DIR / "words.json", extra_words=[n.label for n in cfg.needs])
         self.keyboard_page = KeyboardPage(
-            self._on_letter, self._on_word, self._on_delete, self._on_clear, self._on_speak,
+            self._on_letter, self._on_word, self._on_delete, self._on_clear,
             lambda: self.show_page(self.needs_page), area, self.canvas,
         )
         self.page: Page = self.needs_page
@@ -189,7 +195,7 @@ class MainWindow(QGraphicsView):
         if self.paused:
             buttons, engine = self.pause_screen.buttons, self.resume_dwell
         else:
-            buttons, engine = [*self.page.buttons, self.pause_button], self.dwell
+            buttons, engine = [*self.page.buttons, *self._bar_buttons()], self.dwell
 
         target = None
         if point is not None:
@@ -214,14 +220,23 @@ class MainWindow(QGraphicsView):
 
     # Pages
 
+    def _bar_buttons(self):
+        """The buttons in the message bar row on the current page."""
+        if self.page is self.keyboard_page:
+            return [self.speak_button, self.pause_button]
+        return [self.pause_button]
+
     def show_page(self, page: Page) -> None:
         if page is self.page:
             return
         self.page.hide()
-        for b in self.page.buttons:
+        for b in (*self.page.buttons, *self._bar_buttons()):
             b.set_state(False, 0.0)
         self.page = page
         page.show()
+        keyboard = page is self.keyboard_page
+        self.speak_button.setVisible(keyboard)
+        self.bar.resize(self._bar_widths["keyboard" if keyboard else "needs"], theme.BAR_H)
         self.gaze_dot.raise_()
         if page is self.keyboard_page:
             self._show_typed()
@@ -314,7 +329,7 @@ class MainWindow(QGraphicsView):
     def pause(self) -> None:
         if self.paused:
             return
-        for b in (*self.page.buttons, self.pause_button):
+        for b in (*self.page.buttons, *self._bar_buttons()):
             b.set_state(False, 0.0)
         self.resume_dwell.dwell_time_s = self.cfg.pause.resume_dwell_s
         self.resume_dwell.reset()
