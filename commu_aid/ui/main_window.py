@@ -4,7 +4,7 @@ The layout is drawn on a fixed 1920x1080 canvas and scaled to fit the screen, so
 same on any monitor. Every 16 ms the window reads new gaze samples, finds the button under the
 gaze, and feeds the dwell engine.
 
-Caregiver keys: F2 recalibrate, F3 settings, Ctrl+G gaze dot on/off, F11 full screen, Ctrl+Q quit.
+Caregiver keys: F2 recalibrate, F3 settings, F4 pause / resume, Ctrl+G gaze dot on/off, F11 full screen, Ctrl+Q quit.
 """
 
 from __future__ import annotations
@@ -30,14 +30,17 @@ from ..targets import pick_target
 from ..translate import TranslationError, Translator
 from . import theme
 from .calibration import CalibrationScreen
+from .dwell_button import DwellButton
 from .gaze_dot import GazeDot
 from .message_bar import MessageBar
 from .pages import KeyboardPage, NeedsPage, Page
+from .pause_screen import PauseScreen
 from .settings import SettingsPage
 
 log = logging.getLogger(__name__)
 
 DATA_DIR = Path("~/.commu_aid").expanduser()
+PAUSE_W = 260
 
 
 class Canvas(QWidget):
@@ -80,10 +83,15 @@ class MainWindow(QGraphicsView):
         self._scene.addWidget(self.canvas)
         self._scene.setSceneRect(QRectF(0, 0, theme.CANVAS_W, theme.CANVAS_H))
 
-        self.bar = MessageBar(self.canvas)
-        self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, theme.CANVAS_W - 2 * theme.MARGIN, theme.BAR_H)
-
         area = theme.content_area(cfg.display.side_margin_px, cfg.display.bottom_margin_px)
+        # Pause sits at the right end of the message bar row, lined up with the buttons below it.
+        pause_x = area[0] + area[2] - PAUSE_W
+        self.pause_button = DwellButton("pause", "Pause", self.pause, icon="⏸️", variant="nav", label_px=44)
+        self.pause_button.setParent(self.canvas)
+        self.pause_button.setGeometry(pause_x, theme.BAR_Y, PAUSE_W, theme.BAR_H)
+        self.bar = MessageBar(self.canvas)
+        self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, pause_x - theme.GAP - theme.MARGIN, theme.BAR_H)
+
         self.needs_page = NeedsPage(
             cfg.needs, self._on_need, lambda: self.show_page(self.keyboard_page), area, self.canvas
         )
@@ -98,16 +106,19 @@ class MainWindow(QGraphicsView):
         self.settings = SettingsPage(cfg, self._apply_settings, self.close_settings, self.canvas)
         self.settings.hide()
         self.calibration: Optional[CalibrationScreen] = None
+        self.pause_screen = PauseScreen(self.resume, cfg.pause.resume_dwell_s, self.canvas)
+        self.pause_screen.hide()
 
         self.gaze_dot = GazeDot(self.canvas)
         self.gaze_dot.setGeometry(0, 0, theme.CANVAS_W, theme.CANVAS_H)
         self.show_gaze_dot = cfg.display.show_gaze_dot
         # The canvas is already in the scene, so children start hidden until shown.
-        for widget in (self.bar, self.needs_page, self.gaze_dot):
+        for widget in (self.bar, self.pause_button, self.needs_page, self.gaze_dot):
             widget.show()
 
         d = cfg.dwell
         self.dwell = DwellEngine(d.dwell_time_s, d.blink_grace_s, d.cooldown_s)
+        self.resume_dwell = DwellEngine(cfg.pause.resume_dwell_s, d.blink_grace_s, d.cooldown_s)
         self.smoother = make_gaze_filter(
             cfg.gaze_filter, (cfg.display.width, cfg.display.height), reset_after_s=d.blink_grace_s
         )
@@ -120,6 +131,7 @@ class MainWindow(QGraphicsView):
         for keys, slot in (
             ("F2", self.open_calibration),
             ("F3", self.open_settings),
+            ("F4", self.toggle_pause),
             ("Ctrl+G", self._toggle_gaze_dot),
             ("F11", self._toggle_full_screen),
             ("Ctrl+Q", self.close),
@@ -174,15 +186,23 @@ class MainWindow(QGraphicsView):
         if s is not None and s.valid and now - s.t <= self.cfg.dwell.blink_grace_s:
             point = self.map_to_canvas(s.x, s.y)
 
+        if self.paused:
+            buttons, engine = self.pause_screen.buttons, self.resume_dwell
+        else:
+            buttons, engine = [*self.page.buttons, self.pause_button], self.dwell
+
         target = None
         if point is not None:
-            x, y = point.x() - self.page.x(), point.y() - self.page.y()
-            rects = ((b.key, (b.x(), b.y(), b.width(), b.height())) for b in self.page.buttons if not b.isHidden())
-            target = pick_target(x, y, rects, self.cfg.display.snap_px)
+            rects = []
+            for b in buttons:
+                if not b.isHidden():
+                    pos = b.mapTo(self.canvas, QPoint(0, 0))
+                    rects.append((b.key, (pos.x(), pos.y(), b.width(), b.height())))
+            target = pick_target(point.x(), point.y(), rects, self.cfg.display.snap_px)
 
-        update = self.dwell.update(target, now)
+        update = engine.update(target, now)
         selected = None
-        for b in self.page.buttons:
+        for b in buttons:
             b.set_state(b.key == target, update.progress if b.key == update.target else 0.0)
             if b.key == update.selected:
                 selected = b
@@ -284,6 +304,38 @@ class MainWindow(QGraphicsView):
                 f.write(f"{stamp}\t{english}\t{thai}\n")
         except OSError:
             log.exception("Could not write the message log")
+
+    # Pause
+
+    @property
+    def paused(self) -> bool:
+        return self.pause_screen.isVisible()
+
+    def pause(self) -> None:
+        if self.paused:
+            return
+        for b in (*self.page.buttons, self.pause_button):
+            b.set_state(False, 0.0)
+        self.resume_dwell.dwell_time_s = self.cfg.pause.resume_dwell_s
+        self.resume_dwell.reset()
+        self.pause_screen.resume_dwell_s = self.cfg.pause.resume_dwell_s
+        self.pause_screen.show()
+        self.pause_screen.raise_()
+        self.gaze_dot.raise_()
+
+    def resume(self) -> None:
+        if not self.paused:
+            return
+        self.pause_screen.hide()
+        self.pause_screen.resume_button.set_state(False, 0.0)
+        self.dwell.reset()
+        self.bar.show_message("Welcome back", note="Look at a button to choose it")
+
+    def toggle_pause(self) -> None:
+        if self.paused:
+            self.resume()
+        else:
+            self.pause()
 
     # Calibration
 

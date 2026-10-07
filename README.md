@@ -20,6 +20,9 @@ speaks it in Thai.
   throughout, and the result plots every gaze sample collected at each point, per eye.
 - **Edges:** buttons keep clear of the left, right and bottom screen edges, where the tracker is
   least accurate, and gaze that lands just past a button still counts for it.
+- **Pause (top right)** rests the screen while the patient watches TV or talks: every button
+  turns off except one large **Resume** button at the top centre, which needs a longer look
+  (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
 - **Settings (F3)** let the caregiver change the dwell time (1 to 3 s) and the Needs tiles.
 
 | Needs | Keyboard |
@@ -222,11 +225,12 @@ Caregiver keys:
 | --- | --- |
 | F2 | Calibrate again |
 | F3 | Settings (dwell time, Needs tiles) |
+| F4 | Pause or resume |
 | Ctrl+G (Cmd+G on a Mac) | Show or hide the gaze dot |
 | F11 | Full screen on or off |
 | Ctrl+Q (Cmd+Q on a Mac) | Quit |
 
-On a Mac keyboard, hold **fn** to use F2, F3 and F11.
+On a Mac keyboard, hold **fn** to use F2, F3, F4 and F11.
 
 On the calibration screen: **Space** starts, **Enter** accepts, **R** retries, **Esc** skips and
 uses the saved calibration, **G** shows or hides the live gaze, and **S** shows or hides the gaze
