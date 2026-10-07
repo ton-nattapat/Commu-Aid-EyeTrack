@@ -51,6 +51,11 @@ calibration:
   redo_point_px: 150               # a calibration point with more error than this is shown again once (0 = never)
   show_live_gaze: true             # draw the gaze live on the calibration screen; G toggles it there
 
+# The Pause button (top right) rests the screen: every button turns off except one large Resume
+# button at the top centre. F4 pauses and resumes from the keyboard.
+pause:
+  resume_dwell_s: 4.0              # look at Resume this long to come back (longer than dwell, so a passing glance does not)
+
 # Needs page tiles, left to right, top to bottom (11 tiles; the 12th corner tile always opens the keyboard).
 # action: speak = show and speak the Thai phrase; alert = also play the loud caregiver alarm.
 needs:

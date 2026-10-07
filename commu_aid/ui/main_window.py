@@ -4,7 +4,7 @@ The layout is drawn on a fixed 1920x1080 canvas and scaled to fit the screen, so
 same on any monitor. Every 16 ms the window reads new gaze samples, finds the button under the
 gaze, and feeds the dwell engine.
 
-Caregiver keys: F2 recalibrate, F3 settings, Ctrl+G gaze dot on/off, F11 full screen, Ctrl+Q quit.
+Caregiver keys: F2 recalibrate, F3 settings, F4 pause / resume, Ctrl+G gaze dot on/off, F11 full screen, Ctrl+Q quit.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Optional
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QKeySequence, QPainter, QShortcut
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QWidget
+from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QLabel, QWidget
 
 from ..config import AppConfig, NeedTile
 from ..dwell import DwellEngine
@@ -30,14 +30,18 @@ from ..targets import pick_target
 from ..translate import TranslationError, Translator
 from . import theme
 from .calibration import CalibrationScreen
+from .dwell_button import DwellButton
 from .gaze_dot import GazeDot
 from .message_bar import MessageBar
 from .pages import KeyboardPage, NeedsPage, Page
+from .pause_screen import PauseScreen
 from .settings import SettingsPage
 
 log = logging.getLogger(__name__)
 
 DATA_DIR = Path("~/.commu_aid").expanduser()
+PAUSE_W = 260
+SETTINGS_HINT_MIN_H = 30  # with a smaller bottom margin there is no room for the hint below the buttons
 
 
 class Canvas(QWidget):
@@ -80,34 +84,57 @@ class MainWindow(QGraphicsView):
         self._scene.addWidget(self.canvas)
         self._scene.setSceneRect(QRectF(0, 0, theme.CANVAS_W, theme.CANVAS_H))
 
-        self.bar = MessageBar(self.canvas)
-        self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, theme.CANVAS_W - 2 * theme.MARGIN, theme.BAR_H)
-
         area = theme.content_area(cfg.display.side_margin_px, cfg.display.bottom_margin_px)
+        # Pause sits at the right end of the message bar row, lined up with the buttons below it.
+        pause_x = area[0] + area[2] - PAUSE_W
+        self.pause_button = DwellButton("pause", "Pause", self.pause, icon="⏸️", variant="nav", label_px=44)
+        self.pause_button.setParent(self.canvas)
+        self.pause_button.setGeometry(pause_x, theme.BAR_Y, PAUSE_W, theme.BAR_H)
+        # On the keyboard page Speak sits beside Pause, and the message bar gives up the room for it.
+        speak_x = pause_x - theme.GAP - PAUSE_W
+        self.speak_button = DwellButton("speak", "Speak", self._on_speak, icon="🔊", variant="nav", label_px=44)
+        self.speak_button.setParent(self.canvas)
+        self.speak_button.setGeometry(speak_x, theme.BAR_Y, PAUSE_W, theme.BAR_H)
+        self.bar = MessageBar(self.canvas)
+        self._bar_widths = {"needs": pause_x - theme.GAP - theme.MARGIN, "keyboard": speak_x - theme.GAP - theme.MARGIN}
+        self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, self._bar_widths["needs"], theme.BAR_H)
+
         self.needs_page = NeedsPage(
             cfg.needs, self._on_need, lambda: self.show_page(self.keyboard_page), area, self.canvas
         )
         self.predictor = Predictor(DATA_DIR / "words.json", extra_words=[n.label for n in cfg.needs])
         self.keyboard_page = KeyboardPage(
-            self._on_letter, self._on_word, self._on_delete, self._on_clear, self._on_speak,
+            self._on_letter, self._on_word, self._on_delete, self._on_clear,
             lambda: self.show_page(self.needs_page), area, self.canvas,
         )
         self.page: Page = self.needs_page
         self.keyboard_page.hide()
 
+        # A quiet hint for the nurse in the strip below the buttons; Settings, Pause and calibration cover it.
+        self.settings_hint = QLabel("Caregiver: press F3 for Settings  (fn + F3 on a Mac)", self.canvas)
+        self.settings_hint.setFont(theme.font(22))
+        self.settings_hint.setStyleSheet(f"color: {theme.TEXT_QUIET.name()}; background: transparent;")
+        self.settings_hint.setAlignment(Qt.AlignCenter)
+        hint_top = area[1] + area[3]
+        self.settings_hint.setGeometry(0, hint_top, theme.CANVAS_W, theme.CANVAS_H - hint_top)
+        self.settings_hint.setVisible(theme.CANVAS_H - hint_top >= SETTINGS_HINT_MIN_H)
+
         self.settings = SettingsPage(cfg, self._apply_settings, self.close_settings, self.canvas)
         self.settings.hide()
         self.calibration: Optional[CalibrationScreen] = None
+        self.pause_screen = PauseScreen(self.resume, cfg.pause.resume_dwell_s, self.canvas)
+        self.pause_screen.hide()
 
         self.gaze_dot = GazeDot(self.canvas)
         self.gaze_dot.setGeometry(0, 0, theme.CANVAS_W, theme.CANVAS_H)
         self.show_gaze_dot = cfg.display.show_gaze_dot
         # The canvas is already in the scene, so children start hidden until shown.
-        for widget in (self.bar, self.needs_page, self.gaze_dot):
+        for widget in (self.bar, self.pause_button, self.needs_page, self.gaze_dot):
             widget.show()
 
         d = cfg.dwell
         self.dwell = DwellEngine(d.dwell_time_s, d.blink_grace_s, d.cooldown_s)
+        self.resume_dwell = DwellEngine(cfg.pause.resume_dwell_s, d.blink_grace_s, d.cooldown_s)
         self.smoother = make_gaze_filter(
             cfg.gaze_filter, (cfg.display.width, cfg.display.height), reset_after_s=d.blink_grace_s
         )
@@ -120,6 +147,7 @@ class MainWindow(QGraphicsView):
         for keys, slot in (
             ("F2", self.open_calibration),
             ("F3", self.open_settings),
+            ("F4", self.toggle_pause),
             ("Ctrl+G", self._toggle_gaze_dot),
             ("F11", self._toggle_full_screen),
             ("Ctrl+Q", self.close),
@@ -174,15 +202,23 @@ class MainWindow(QGraphicsView):
         if s is not None and s.valid and now - s.t <= self.cfg.dwell.blink_grace_s:
             point = self.map_to_canvas(s.x, s.y)
 
+        if self.paused:
+            buttons, engine = self.pause_screen.buttons, self.resume_dwell
+        else:
+            buttons, engine = [*self.page.buttons, *self._bar_buttons()], self.dwell
+
         target = None
         if point is not None:
-            x, y = point.x() - self.page.x(), point.y() - self.page.y()
-            rects = ((b.key, (b.x(), b.y(), b.width(), b.height())) for b in self.page.buttons if not b.isHidden())
-            target = pick_target(x, y, rects, self.cfg.display.snap_px)
+            rects = []
+            for b in buttons:
+                if not b.isHidden():
+                    pos = b.mapTo(self.canvas, QPoint(0, 0))
+                    rects.append((b.key, (pos.x(), pos.y(), b.width(), b.height())))
+            target = pick_target(point.x(), point.y(), rects, self.cfg.display.snap_px)
 
-        update = self.dwell.update(target, now)
+        update = engine.update(target, now)
         selected = None
-        for b in self.page.buttons:
+        for b in buttons:
             b.set_state(b.key == target, update.progress if b.key == update.target else 0.0)
             if b.key == update.selected:
                 selected = b
@@ -194,14 +230,23 @@ class MainWindow(QGraphicsView):
 
     # Pages
 
+    def _bar_buttons(self):
+        """The buttons in the message bar row on the current page."""
+        if self.page is self.keyboard_page:
+            return [self.speak_button, self.pause_button]
+        return [self.pause_button]
+
     def show_page(self, page: Page) -> None:
         if page is self.page:
             return
         self.page.hide()
-        for b in self.page.buttons:
+        for b in (*self.page.buttons, *self._bar_buttons()):
             b.set_state(False, 0.0)
         self.page = page
         page.show()
+        keyboard = page is self.keyboard_page
+        self.speak_button.setVisible(keyboard)
+        self.bar.resize(self._bar_widths["keyboard" if keyboard else "needs"], theme.BAR_H)
         self.gaze_dot.raise_()
         if page is self.keyboard_page:
             self._show_typed()
@@ -284,6 +329,38 @@ class MainWindow(QGraphicsView):
                 f.write(f"{stamp}\t{english}\t{thai}\n")
         except OSError:
             log.exception("Could not write the message log")
+
+    # Pause
+
+    @property
+    def paused(self) -> bool:
+        return self.pause_screen.isVisible()
+
+    def pause(self) -> None:
+        if self.paused:
+            return
+        for b in (*self.page.buttons, *self._bar_buttons()):
+            b.set_state(False, 0.0)
+        self.resume_dwell.dwell_time_s = self.cfg.pause.resume_dwell_s
+        self.resume_dwell.reset()
+        self.pause_screen.resume_dwell_s = self.cfg.pause.resume_dwell_s
+        self.pause_screen.show()
+        self.pause_screen.raise_()
+        self.gaze_dot.raise_()
+
+    def resume(self) -> None:
+        if not self.paused:
+            return
+        self.pause_screen.hide()
+        self.pause_screen.resume_button.set_state(False, 0.0)
+        self.dwell.reset()
+        self.bar.show_message("Welcome back", note="Look at a button to choose it")
+
+    def toggle_pause(self) -> None:
+        if self.paused:
+            self.resume()
+        else:
+            self.pause()
 
     # Calibration
 

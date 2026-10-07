@@ -18,7 +18,7 @@ class DwellButton(QWidget):
         label: str,
         on_select: Callable[[], None],
         icon: str = "",
-        variant: str = "normal",  # normal | nav | alert | word
+        variant: str = "normal",  # normal | nav | alert | word | resume
         label_px: int = 48,
         parent: Optional[QWidget] = None,
     ):
@@ -62,7 +62,8 @@ class DwellButton(QWidget):
         fill = {"nav": theme.SURFACE_NAV, "alert": theme.SURFACE_ALERT, "word": theme.SURFACE_WORD}.get(self.variant, theme.SURFACE)
         p.fillPath(path, theme.FLASH if self._flash else fill)
 
-        if self.progress > 0 and not self._flash:
+        ring = self.variant == "resume" and bool(self.icon)
+        if self.progress > 0 and not self._flash and not ring:
             # Progress fills from the bottom up, easy to see from the corner of the eye.
             p.save()
             p.setClipPath(path)
@@ -81,6 +82,17 @@ class DwellButton(QWidget):
             p.setFont(theme.font(icon_px))
             icon_rect = QRectF(r.left(), r.top() + r.height() * 0.08, r.width(), r.height() * 0.5)
             p.drawText(icon_rect, Qt.AlignCenter, self.icon)
+            if ring:
+                # Resume fills a ring around its icon instead, so a long dwell clearly shows it is working.
+                d = min(icon_rect.width(), icon_rect.height()) + 4
+                circle = QRectF(0, 0, d, d)
+                circle.moveCenter(icon_rect.center())
+                p.setPen(QPen(theme.BORDER, 12))
+                p.drawEllipse(circle)
+                if self.progress > 0:
+                    p.setPen(QPen(theme.HOVER, 12, Qt.SolidLine, Qt.RoundCap))
+                    p.drawArc(circle, 90 * 16, -round(self.progress * 360 * 16))  # clockwise from 12 o'clock
+                p.setPen(text_color)
             p.setFont(theme.font(self.label_px, bold=True))
             label_rect = QRectF(r.left() + 8, r.top() + r.height() * 0.55, r.width() - 16, r.height() * 0.4)
             p.drawText(label_rect, Qt.AlignCenter | Qt.TextWordWrap, self.label)
