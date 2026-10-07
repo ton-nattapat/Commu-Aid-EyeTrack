@@ -182,6 +182,17 @@ def test_page_switch_does_not_bounce_back(setup, app):
     assert w.page is w.keyboard_page
 
 
+def test_settings_hint_sits_below_the_buttons_and_hides_under_settings(setup):
+    make = setup[0]
+    w = make()
+    hint = w.settings_hint
+    assert hint.isVisible() and "F3" in hint.text()
+    lowest = max(b.mapTo(w.canvas, b.rect().bottomLeft()).y() for b in w.page.buttons)
+    assert hint.geometry().top() > lowest
+    w.open_settings()
+    assert w.settings.geometry().contains(hint.geometry())
+
+
 def test_settings_slider_is_one_to_three_seconds_in_half_second_steps(setup, tmp_path):
     make = setup[0]
     w = make()
