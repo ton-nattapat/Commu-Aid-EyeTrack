@@ -282,7 +282,7 @@ class MainWindow(QGraphicsView):
 
     def _on_clear(self) -> None:
         self.typed = ""
-        self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
+        self._show_typed()
 
     def _on_speak(self) -> None:
         text = " ".join(self.typed.split()).capitalize()
