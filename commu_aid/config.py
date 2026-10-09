@@ -24,6 +24,11 @@ class DwellConfig:
 
 
 GAZE_FILTER_METHODS = ("fixation", "one_euro", "average")
+# Steadiness levels on the Settings page: fixation radius for each, Light to Strong.
+# Buttons are 146 px apart, so the strongest stays below that.
+STEADINESS_RADII_PX = (60, 80, 100, 120, 140)
+STEADINESS_NAMES = ("Light", "Low", "Medium", "High", "Strong")
+STEADINESS_DEFAULT = 3  # High, 120 px
 
 
 @dataclass
@@ -181,3 +186,8 @@ def clamp_dwell(seconds: float) -> float:
 
 def clamp_wobble_grace(seconds: float) -> float:
     return max(0.0, min(WOBBLE_GRACE_MAX_S, float(seconds)))
+
+
+def steadiness_level(radius_px: float) -> int:
+    """Settings level whose fixation radius is nearest the given one."""
+    return min(range(len(STEADINESS_RADII_PX)), key=lambda i: abs(STEADINESS_RADII_PX[i] - float(radius_px)))

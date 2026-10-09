@@ -423,6 +423,9 @@ class MainWindow(QGraphicsView):
     def _apply_settings(self) -> None:
         self.dwell.dwell_time_s = self.cfg.dwell.dwell_time_s
         self.dwell.wobble_grace_s = self.cfg.dwell.wobble_grace_s
+        c = self.cfg
+        # A new filter starts afresh, so the gaze point jumps straight to where the eyes are.
+        self.smoother = make_gaze_filter(c.gaze_filter, (c.display.width, c.display.height), c.dwell.blink_grace_s)
         self.needs_page.set_needs(self.cfg.needs)
         self.bar.show_message("Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s")
 

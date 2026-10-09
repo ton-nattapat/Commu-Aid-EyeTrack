@@ -240,6 +240,64 @@ def test_settings_wobble_grace_is_off_to_one_second(setup, tmp_path):
     assert "wobble_grace_s: 1.0" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
 
 
+def test_settings_gaze_steadiness_sets_the_fixation_radius(setup, tmp_path):
+    from commu_aid.gaze.filters import FixationFilter
+
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.open_settings()
+    s = w.settings
+    assert s.steady_value.text() == "High" and not s.steady_reset.isEnabled()
+    s.steady_more.click()
+    assert s.steady_value.text() == "Strong" and not s.steady_more.isEnabled()
+    for _ in range(5):
+        s.steady_less.click()
+    assert s.steady_value.text() == "Light" and not s.steady_less.isEnabled()
+    s.steady_more.click()
+    s.save()
+    assert isinstance(w.smoother, FixationFilter) and w.smoother.radius_px == 80
+    assert "fixation_radius_px: 80" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    w.open_settings()
+    assert w.settings.steady_value.text() == "Low"
+    w.settings.steady_reset.click()
+    w.settings.save()
+    assert w.smoother.radius_px == 120
+
+
+def test_settings_keeps_a_hand_tuned_filter_unless_steadiness_changes(setup, tmp_path):
+    from commu_aid.gaze.filters import FixationFilter, OneEuroFilter
+
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.cfg.gaze_filter.fixation_radius_px = 110
+    w.open_settings()
+    assert w.settings.steady_value.text() in ("Medium", "High")
+    w.settings.save()
+    assert w.cfg.gaze_filter.fixation_radius_px == 110
+
+    w.cfg.gaze_filter.method = "one_euro"
+    w.open_settings()
+    assert "one_euro" in w.settings.steady_hint.text()
+    w.settings.save()
+    assert isinstance(w.smoother, OneEuroFilter)
+    w.open_settings()
+    w.settings.steady_more.click()
+    w.settings.save()
+    assert w.cfg.gaze_filter.method == "fixation" and isinstance(w.smoother, FixationFilter)
+
+
+def test_settings_page_shows_every_needs_row(setup):
+    make = setup[0]
+    w = make()
+    w.open_settings()
+    table = w.settings.table
+    rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
+    assert rows <= table.viewport().height()
+    assert not table.verticalScrollBar().isVisible()
+
+
 def test_wobble_onto_neighbour_key_keeps_progress(setup, app):
     make, clock, source, _, _ = setup
     w = make()
