@@ -7,11 +7,13 @@ in 0.5 s steps) to choose it. The app shows the English text and speaks it in Th
 - **Page 1, Needs:** 11 large tiles (Thirsty, Hungry, Pee, Pain, Too hot, Too cold, Turn me,
   Suction, Yes, No, Call caregiver) and a Keyboard tile. Each tile speaks a fixed Thai phrase.
   Call caregiver also plays a loud alarm.
-- **Page 2, Keyboard:** QWERTY letters, Space, Delete, Clear, Speak, and Needs to go back.
-  Four word buttons above the letters predict the word being typed (or the next word);
-  choosing one finishes the word and adds a space. Prediction is offline and learns from
-  every message the patient speaks.
-  Speak, at the top beside Pause, translates the typed English to Thai offline (Meta NLLB-200) and speaks the Thai.
+- **Page 2, Keyboard:** a number row above the QWERTY letters, with Space after M. Tall Yes and No
+  buttons down the left speak "ใช่" / "ไม่ใช่" at once and leave the typed text alone; a tall Delete
+  and Clear sit down the right. Six word buttons above the numbers predict the word being typed
+  (or the next word); choosing one finishes the word and adds a space. Prediction is offline and
+  learns from every message the patient speaks.
+  Speak and Needs sit at the top beside Pause. Speak translates the typed English to Thai offline
+  (Meta NLLB-200) and speaks the Thai.
 - **Calibration** runs every time the app starts: position check, 9-point calibration (corners,
   edge middles and centre; a point with bad data is shown once more), 9-point validation out to
   the edge buttons, then Accept or Retry. The position check draws a face
