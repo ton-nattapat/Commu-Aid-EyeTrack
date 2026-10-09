@@ -39,6 +39,85 @@ in 0.5 s steps) to choose it. The app shows the English text and speaks it in Th
 The design and decisions are in the
 [design proposal](https://claude.ai/code/artifact/2b4e4611-b66c-4974-8125-2c922de159a4).
 
+## Install on a Mac (the app)
+
+This is everything a new Mac needs to run Communication Aid from the installer, without Python.
+Do the steps in order; each is needed once per Mac. You need the `.dmg` built as in
+[Build the installer](#build-the-installer), a Mac login with administrator rights, and
+internet for the downloads.
+
+1. **Install the app.** Open `CommunicationAid-<version>-<chip>.dmg` and drag
+   **Communication Aid** onto **Applications**. The app only runs on the same chip as the Mac
+   that built it: built on Apple silicon (M1 to M4), it needs an Apple silicon Mac.
+2. **Allow it to open.** It isn't signed by Apple, so macOS blocks it the first time:
+   1. Double-click **Communication Aid** in Applications. When macOS says it can't be opened,
+      click **Done**.
+   2. Open **System Settings > Privacy & Security**, scroll down to "Communication Aid was
+      blocked" and click **Open Anyway**. Enter the Mac password if asked.
+   3. Open the app again and click **Open Anyway**. Quit it for now (Cmd+Q).
+
+   If there is no Open Anyway button, run
+   `xattr -dr com.apple.quarantine "/Applications/Communication Aid.app"` in Terminal instead.
+3. **Install Rosetta (Apple silicon Macs only).** Tobii's driver is an Intel program, so it needs
+   Rosetta. In Terminal:
+
+   ```bash
+   softwareupdate --install-rosetta --agree-to-license
+   ```
+
+4. **Install the Tobii Pro Spark driver.** Follow
+   [Install the Tobii Pro Spark driver](#install-the-tobii-pro-spark-driver-runtime) below:
+   download the runtime from Tobii Connect, double-click **install-driver**, type the Mac
+   password, wait for `Runtime Service 2.2.3.0 Installed`. Then plug the Spark straight into
+   the Mac (no hub), or unplug and replug it.
+5. **Install Tobii Pro Eye Tracker Manager.** Download it for macOS from
+   [Tobii Pro Eye Tracker Manager](https://www.tobii.com/products/software/applications-and-developer-kits/tobii-pro-eye-tracker-manager),
+   open the download and drag it to Applications, then open it (allow it in Privacy & Security
+   if macOS asks). The Spark should appear in its list. If it doesn't, the driver in step 4 isn't
+   running yet: unplug and replug the Spark, or restart the Mac. Ignore its own driver Install
+   button if it is greyed out; step 4 replaces it.
+6. **Run Display Setup.** In Eye Tracker Manager, click the Spark, then **Display Setup**. Enter
+   the size of the screen the Spark is mounted on (measure the visible picture in millimetres)
+   and where the Spark sits under it, then save. Do this again whenever the Spark moves to a
+   different screen. A wrong size makes gaze miss more and more towards the screen edges.
+7. **Add the Thai voice.** System Settings > Accessibility > Spoken Content > System Voice >
+   Manage Voices, find Thai and add **Kanya**.
+8. **Start Communication Aid.** Calibration runs first: the patient follows the dots, then press
+   Enter to accept or R to retry. On the first start the translation model downloads (about
+   2.5 GB), so keep the Mac online for a few minutes; the first Speak waits for it.
+
+If the app can't find the Spark, it says why: click **Show Details** for the full check, or
+choose **Use the mouse** to try the app without it. To run the same check from Terminal:
+
+```bash
+"/Applications/Communication Aid.app/Contents/MacOS/Communication Aid" --check-tracker
+```
+
+Settings, the saved calibration and `app.log` are in the hidden folder `~/.commu_aid`
+(Finder: Go > Go to Folder, `~/.commu_aid`). Send `app.log` with any problem report.
+
+To uninstall, quit the app and drag it from Applications to the Bin. To remove its settings
+and the translation model too:
+
+```bash
+rm -rf ~/.commu_aid ~/.cache/huggingface/hub/models--facebook--nllb-200-distilled-600M
+```
+
+The Tobii driver and Eye Tracker Manager stay installed.
+
+### Build the installer
+
+On the development Mac, with the environment from [Setup](#setup-macos):
+
+```bash
+conda activate commu-aid
+packaging/mac/build_mac.sh      # makes dist/CommunicationAid-<version>-<chip>.dmg
+```
+
+Send the `.dmg` by AirDrop, USB stick or a shared drive. Rebuild after pulling new changes, so the
+installer has them. Options (`--version`, `--no-translate`, signing) are in
+[docs/install-mac.md](docs/install-mac.md).
+
 ## Setup (macOS)
 
 `tobii-research` only ships wheels for **Python 3.10**, so the environment must use exactly
@@ -126,7 +205,9 @@ so on newer macOS its Install button stays greyed out. Install the runtime direc
    python -m commu_aid.check_tracker
    ```
 
-   It should print a line like `Tracker     Tobii Pro Spark  serial TPE01-...`.
+   It should print a line like `Tracker     Tobii Pro Spark  serial TPE01-...`. With the Mac
+   app instead of Python, run
+   `"/Applications/Communication Aid.app/Contents/MacOS/Communication Aid" --check-tracker`.
 
 Don't commit the `.dmg` to this repo: it is Tobii's software, so download it from Tobii Connect
 on each Mac.
@@ -204,6 +285,7 @@ python -m commu_aid --skip-calibration   # use the last saved calibration
 python -m commu_aid.check_tracker        # check the tracker without starting the app
 python -m commu_aid --config other.yaml  # use a different settings file
 python -m commu_aid -v                   # verbose logging
+python -m commu_aid --check-tracker      # same as python -m commu_aid.check_tracker
 ```
 
 ### Simulated eye tracker
@@ -288,7 +370,8 @@ old moving average. Press Ctrl+G to watch the dot while you try them.
 
 The app writes to `~/.commu_aid/`: the saved calibration, generated sounds, and
 `messages.log` (every message with a time stamp), and `words.json` (the words and word pairs
-the patient has spoken, used to rank predictions; delete it to start fresh).
+the patient has spoken, used to rank predictions; delete it to start fresh). The Mac app also
+keeps its `config.yaml` and `app.log` there.
 
 ## How it works
 
@@ -323,6 +406,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Targets ─▶ Dwel
 | `commu_aid/speech.py` | Offline text-to-speech (`say` on macOS, pyttsx3 elsewhere) |
 | `commu_aid/sounds.py` | Click and caregiver-alarm sounds, generated on first run |
 | `commu_aid/translate.py` | Offline English to Thai with NLLB-200 |
+| `packaging/mac/` | Mac app and `.dmg` installer build ([docs/install-mac.md](docs/install-mac.md)) |
 
 Dwell rules: a selection fires after the dwell time on one button; a blink or glance away
 shorter than 0.3 s does not reset the timer; after a selection, nothing can be selected for
