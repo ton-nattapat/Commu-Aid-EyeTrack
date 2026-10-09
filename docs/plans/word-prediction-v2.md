@@ -1,6 +1,6 @@
 # Word prediction v2: six better, less repetitive suggestions
 
-Status: plan only, no code yet. Ton asked to rank the 12 follow-ups from the patient session before coding starts.
+Status: items 1, 2 and 5 are built. Items 3 and 4 need the Tatoeba data, which `tools/build_word_data.py` generates once the file can be downloaded.
 
 ## What the patient sees today
 
@@ -16,7 +16,7 @@ Status: plan only, no code yet. Ton asked to rank the 12 follow-ups from the pat
 
 ## Changes
 
-1. **Six suggestions.** `KeyboardPage.SUGGESTIONS` goes from 4 to 6 in the same top row. On the 1800 px wide area each button is 270 px wide (now 423 px), well above the 110 px minimum, so the redesigned layout needs no extra row. Long words already shrink their label to fit.
+1. **Six suggestions.** The new keyboard layout (PR #21) already has 6 word buttons and sizes them from the space it gives the row; `Predictor.suggest` now returns 6 by default.
 2. **One form per word.** Suggestions are grouped by a small built-in stemmer (plural `-s/-es/-ies`, `-ed`, `-ing`, `-'s`, plus a short irregular table such as HEAR/HEARD, GO/WENT/GONE). Only the best-scoring member of each group is shown. A form the patient has used himself still wins over the dictionary form.
 3. **Everyday, informal words first.** Re-rank `english_words.txt` toward spoken English (subtitle and conversation frequency rather than web/news), drop proper nouns, abbreviations and offensive words, and keep the care-word boost. Informal forms such as OK, YEAH, GONNA, WANNA stay in.
 4. **Real next-word guesses.** Replace the 8-entry `FOLLOWERS` table with a bundled bigram file (top 6 followers for the ~2,000 most common words), built once from a conversational sentence corpus and shipped as JSON so it works offline. Never suggest the word just typed.
