@@ -1,6 +1,6 @@
 # Plan: keep dwell progress through a short wobble off the button
 
-Status: plan only, no code yet. Ton asked to rank the 12 follow-up items before coding starts.
+Status: implemented in PR #14 with the 0.5 s default, 0 to 1.0 s in Settings.
 
 ## What Ton saw with the patient
 
@@ -49,6 +49,3 @@ again on the same button.
 - Simulator run (`--simulate typical` and `hard`) to compare how often a dwell restarts, before
   and after.
 
-## Open question for Ton
-
-- 0.5 s default, adjustable 0 to 1.0 s in Settings. Is that range right?

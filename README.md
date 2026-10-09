@@ -23,7 +23,11 @@ in 0.5 s steps) to choose it. The app shows the English text and speaks it in Th
   turns off except one large **Resume** button at the top centre, which needs a longer look
   (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
 - **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.5 s steps, with a large
-  slider and big − / + buttons) and the Needs tiles.
+  slider and big − / + buttons), the wobble grace (Off, 0.5 s or 1.0 s) and the Needs tiles.
+- **Wobble grace**: if the gaze slips onto a neighbouring button and comes back within 0.5 s
+  (`dwell.wobble_grace_s`), the first button keeps its progress instead of starting over.
+  If the gaze stays on the new button, its dwell counts from when the gaze arrived. Resume on
+  the rest screen keeps the short blink grace, so two short looks still never wake the screen.
   A small line at the bottom of the Needs and Keyboard pages reminds the nurse which key opens it.
 
 | Needs | Keyboard |
@@ -228,7 +232,7 @@ Caregiver keys:
 | Key | Action |
 | --- | --- |
 | F2 | Calibrate again |
-| F3 | Settings (dwell time, Needs tiles) |
+| F3 | Settings (dwell time, wobble grace, Needs tiles) |
 | F4 | Pause or resume |
 | Ctrl+G (Cmd+G on a Mac) | Show or hide the gaze dot |
 | F11 | Full screen on or off |
@@ -250,7 +254,7 @@ an offset; a wide cloud is noise; one eye's cluster away from the other's points
 
 Everything is in [`config.yaml`](config.yaml):
 
-- `dwell`: dwell time, blink grace, cooldown.
+- `dwell`: dwell time, blink grace, cooldown, wobble grace.
 - `gaze_filter`: how the gaze point is steadied (see [If the gaze point is shaky](#if-the-gaze-point-is-shaky)).
 - `display`: edge margins and snapping (see [If gaze misses near the screen edges](#if-gaze-misses-near-the-screen-edges)).
 - `calibration`: for example `auto_accept_max_error_px` to accept a good calibration without

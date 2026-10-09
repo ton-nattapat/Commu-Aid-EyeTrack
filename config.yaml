@@ -5,6 +5,7 @@ dwell:
   dwell_time_s: 3.0        # how long the patient must look at a button to select it (1.0 to 3.0)
   blink_grace_s: 0.3       # a gap this short (blink, jitter off the button) does not reset the timer
   cooldown_s: 1.0          # after a selection, nothing can be selected for this long
+  wobble_grace_s: 0.5      # gaze may slip onto a neighbouring button this long and come back without losing progress (0 to 1.0)
 
 # Steadies the noisy gaze point. Eyes hold still on a button, then jump to the next one;
 # the filter smooths hard while they hold still and follows a jump within a few samples.
