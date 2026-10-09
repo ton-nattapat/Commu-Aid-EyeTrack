@@ -22,9 +22,12 @@ Communication Aid: installing on this Mac
      (TobiiProSpark_2.2.3.0_x64.dmg).
    - Open it, double-click "install-driver", type your Mac password at "Password:" and wait for
      "Runtime Service 2.2.3.0 Installed".
-   - On an Apple silicon Mac, if it asks to install Rosetta, say yes.
+   - On an Apple silicon Mac, install Rosetta first (Terminal):
+       softwareupdate --install-rosetta --agree-to-license
    - Plug the Spark straight into the Mac (no hub), or unplug and replug it.
-   - Once only: in Tobii Pro Eye Tracker Manager (also from Tobii), run Display Setup for this screen.
+   - Install Tobii Pro Eye Tracker Manager for macOS from tobii.com and open it: the Spark should
+     be listed. Click it, then Display Setup: enter this screen's size in mm and where the Spark
+     sits, and save.
 
 5. Start Communication Aid
    - Calibration runs first: follow the dots, then Enter to accept or R to retry.
@@ -40,4 +43,4 @@ Keys: F2 calibrate again, F3 settings, Cmd+G gaze dot, F11 full screen, Cmd+Q qu
 Settings and logs are in the hidden folder ~/.commu_aid (in Finder: Go > Go to Folder, type
 ~/.commu_aid). Send app.log from there when reporting a problem.
 
-Full guide: docs/install-mac.md in the Commu-Aid-EyeTrack project.
+Full guide: "Install on a Mac (the app)" in the Commu-Aid-EyeTrack README.

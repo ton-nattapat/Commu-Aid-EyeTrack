@@ -9,7 +9,7 @@
 # Output: dist/CommunicationAid-<version>-<arm64|x86_64>.dmg
 # The app runs on Macs with the same chip type as the Mac that built it (Apple silicon: arm64).
 # The Tobii Pro Spark runtime is NOT included: install it on each Mac from Tobii Connect
-# (docs/install-mac.md, step 4).
+# (README, "Install on a Mac (the app)").
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -75,4 +75,4 @@ rm -rf "$STAGE"
 
 echo
 echo "Done: $DMG ($(du -h "$DMG" | cut -f1))"
-echo "Send it to the other Mac and follow docs/install-mac.md (also on the disk as Read Me First.txt)."
+echo "Send it to the other Mac and follow 'Install on a Mac (the app)' in the README (short version on the disk: Read Me First.txt)."
