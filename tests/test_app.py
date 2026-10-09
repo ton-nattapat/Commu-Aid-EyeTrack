@@ -511,3 +511,58 @@ def test_keyboard_layout_columns_and_word_row(setup):
     assert delete.height() > 2 * p.height()  # far bigger than one key
     words = [b for b in page.buttons if isinstance(b.key, tuple) and b.key[0] == "word"]
     assert len(words) == 6 and len({b.y() for b in words}) == 1
+
+
+def press(w, key, mods=None, text=""):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, key, mods or Qt.NoModifier, text))
+
+
+def test_caregiver_types_on_the_mac_keyboard(setup, app):
+    from PySide6.QtCore import Qt
+
+    make, _, _, speaker, _ = setup
+    w = make()
+    assert w.page is w.needs_page
+    for key, text in [(Qt.Key_H, "h"), (Qt.Key_I, "i"), (Qt.Key_Space, " "), (Qt.Key_2, "2")]:
+        press(w, key, text=text)
+    assert w.page is w.keyboard_page  # typing opens the keyboard page
+    assert w.typed == "HI 2" and w.bar.english == "HI 2"
+    press(w, Qt.Key_Backspace)
+    assert w.typed == "HI "
+    press(w, Qt.Key_7, Qt.KeypadModifier, "7")
+    assert w.typed == "HI 7"
+    press(w, Qt.Key_Backspace, Qt.ShiftModifier)
+    assert w.typed == "" and w.bar.english == ""
+
+
+def test_enter_speaks_what_the_caregiver_typed(setup, app):
+    from PySide6.QtCore import Qt
+
+    make, _, _, speaker, _ = setup
+    w = make()
+    for key in (Qt.Key_H, Qt.Key_I):
+        press(w, key)
+    press(w, Qt.Key_Return)
+    for _ in range(50):
+        app.processEvents()
+        if speaker.spoken:
+            break
+    assert speaker.spoken == [("TH:Hi", "th")]
+
+
+def test_caregiver_keys_ignored_on_rest_screen_and_settings_and_with_ctrl(setup, app):
+    from PySide6.QtCore import Qt
+
+    w = setup[0]()
+    w.pause()
+    press(w, Qt.Key_A)
+    w.resume()
+    w.open_settings()
+    press(w, Qt.Key_B)
+    w.close_settings()
+    press(w, Qt.Key_C, Qt.ControlModifier)
+    assert w.typed == ""
+    assert w.page is w.needs_page
