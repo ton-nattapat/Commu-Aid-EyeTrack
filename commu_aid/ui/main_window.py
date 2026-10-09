@@ -260,9 +260,20 @@ class MainWindow(QGraphicsView):
         else:
             self.speaker.speak(tile.thai, "th")
 
-    def _show_typed(self) -> None:
-        self.bar.show_typing(self.typed)
+    def _show_typed(self, note: str = "", warning: bool = False) -> None:
+        self.bar.show_typing(self.typed, note, warning)
         self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
+
+    def _show_status(self, message: str, note: str = "", warning: bool = False) -> None:
+        """A status line such as "Welcome back". On the keyboard page the typed text stays in the box,
+        because the next key adds to it, and the status shows as a small note underneath."""
+        if self.page is self.keyboard_page:
+            self._show_typed(f"{message}. {note}" if note else message, warning)
+        else:
+            self.bar.show_message(message, note=note, warning=warning)
+
+    def _sentence(self) -> str:
+        return " ".join(self.typed.split()).capitalize()
 
     def _on_letter(self, ch: str) -> None:
         self.typed += ch
@@ -285,7 +296,7 @@ class MainWindow(QGraphicsView):
         self._show_typed()
 
     def _on_speak(self) -> None:
-        text = " ".join(self.typed.split()).capitalize()
+        text = self._sentence()
         if not text:
             return
         self.predictor.learn(text)
@@ -309,17 +320,20 @@ class MainWindow(QGraphicsView):
     def _on_translated(self, request: int, english: str, spoken: str, ok: bool) -> None:
         if request != self._request_id:
             return  # a newer message replaced this one
-        if ok and spoken != english:
-            self.bar.show_message(english, spoken)
-            self.speaker.speak(spoken, "th")
-            self._log(english, spoken)
-        else:
-            if not ok:
+        thai = ok and spoken != english
+        # If the patient kept typing while it translated, speak it but leave their new text in the box.
+        if not (self.page is self.keyboard_page and self._sentence() != english):
+            if thai:
+                self.bar.show_message(english, spoken)
+            elif not ok:
                 self.bar.show_message(english, note="Translation failed, speaking English", warning=True)
             else:
                 self.bar.show_message(english)
+        if thai:
+            self.speaker.speak(spoken, "th")
+        else:
             self.speaker.speak(english, "en")
-            self._log(english, "")
+        self._log(english, spoken if thai else "")
 
     def _log(self, english: str, thai: str) -> None:
         try:
@@ -354,7 +368,7 @@ class MainWindow(QGraphicsView):
         self.pause_screen.hide()
         self.pause_screen.resume_button.set_state(False, 0.0)
         self.dwell.reset()
-        self.bar.show_message("Welcome back", note="Look at a button to choose it")
+        self._show_status("Welcome back", note="Look at a button to choose it")
 
     def toggle_pause(self) -> None:
         if self.paused:
@@ -383,7 +397,7 @@ class MainWindow(QGraphicsView):
                 self.source.save_calibration(path)
             except Exception:
                 log.exception("Could not save calibration")
-            self.bar.show_message("Calibration done", note="Look at a button to choose it")
+            self._show_status("Calibration done", note="Look at a button to choose it")
         else:
             self._use_saved_calibration()
         self.calibration.hide()
@@ -399,9 +413,9 @@ class MainWindow(QGraphicsView):
             log.exception("Could not load saved calibration")
             loaded = False
         if loaded:
-            self.bar.show_message("Using the saved calibration", note="F2 to recalibrate")
+            self._show_status("Using the saved calibration", note="F2 to recalibrate")
         else:
-            self.bar.show_message("Not calibrated", note="Press F2 to calibrate", warning=True)
+            self._show_status("Not calibrated", note="Press F2 to calibrate", warning=True)
 
     # Settings
 
@@ -422,7 +436,7 @@ class MainWindow(QGraphicsView):
     def _apply_settings(self) -> None:
         self.dwell.dwell_time_s = self.cfg.dwell.dwell_time_s
         self.needs_page.set_needs(self.cfg.needs)
-        self.bar.show_message("Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s")
+        self._show_status("Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s")
 
     # Caregiver keys
 

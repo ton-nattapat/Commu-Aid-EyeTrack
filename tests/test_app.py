@@ -302,6 +302,77 @@ def test_clear_empties_the_text_box(setup, app):
     assert w.bar.english == ""
 
 
+def type_keys(w, clock, source, app, letters):
+    for ch in letters:
+        look_at(w, source, button(w.keyboard_page, ("key", ch)))
+        dwell(w, clock, app, 3.2)
+        source.point = None
+        dwell(w, clock, app, 1.2)
+
+
+def test_resume_keeps_the_typed_text_in_the_box(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    type_keys(w, clock, source, app, "HI")
+    w.pause()
+    w.resume()
+    assert w.typed == "HI"
+    assert w.bar.typing and w.bar.english == "HI"  # what the box shows is what the next key adds to
+    assert "Welcome back" in w.bar.note
+    type_keys(w, clock, source, app, "M")
+    assert w.bar.english == "HIM"
+
+
+def test_clear_after_resume_empties_the_box_for_good(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    type_keys(w, clock, source, app, "HI")
+    w.pause()
+    w.resume()
+    look_at(w, source, button(w.keyboard_page, "clear"))
+    dwell(w, clock, app, 3.2)
+    source.point = None
+    dwell(w, clock, app, 1.2)
+    type_keys(w, clock, source, app, "A")
+    assert w.typed == "A" and w.bar.english == "A"
+
+
+def test_status_messages_on_the_keyboard_page_keep_the_typed_text(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "WATER"
+    w._show_typed()
+    for status in (w._apply_settings, w._use_saved_calibration):
+        status()
+        assert w.bar.typing and w.bar.english == "WATER", status
+        assert w.bar.note
+
+
+def test_resume_on_the_needs_page_shows_welcome_back(setup):
+    w = setup[0]()
+    w.pause()
+    w.resume()
+    assert not w.bar.typing and w.bar.english == "Welcome back"
+
+
+def test_typing_during_translation_is_not_hidden_by_the_result(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    w._on_speak()
+    w._on_letter("X")  # the patient starts the next word before the translation is back
+    for _ in range(50):
+        app.processEvents()
+        if speaker.spoken:
+            break
+    assert speaker.spoken == [("TH:Hi", "th")]
+    assert w.bar.typing and w.bar.english == "HIX"
+
+
 def test_keyboard_targets_stay_large(setup):
     w = setup[0]()
     for b in w.keyboard_page.buttons:

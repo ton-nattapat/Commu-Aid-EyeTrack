@@ -24,8 +24,8 @@ class MessageBar(QWidget):
         self.typing = False
         self.update()
 
-    def show_typing(self, text: str) -> None:
-        self.english, self.thai, self.note, self.note_is_warning = text, "", "", False
+    def show_typing(self, text: str, note: str = "", warning: bool = False) -> None:
+        self.english, self.thai, self.note, self.note_is_warning = text, "", note, warning
         self.typing = True
         self.update()
 
