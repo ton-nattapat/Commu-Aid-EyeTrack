@@ -40,7 +40,6 @@ from .settings import SettingsPage
 log = logging.getLogger(__name__)
 
 DATA_DIR = Path("~/.commu_aid").expanduser()
-PAUSE_W = 260
 SETTINGS_HINT_MIN_H = 30  # with a smaller bottom margin there is no room for the hint below the buttons
 
 
@@ -86,15 +85,14 @@ class MainWindow(QGraphicsView):
 
         area = theme.content_area(cfg.display.side_margin_px, cfg.display.bottom_margin_px)
         # Pause sits at the right end of the message bar row, lined up with the buttons below it.
-        pause_x = area[0] + area[2] - PAUSE_W
-        self.pause_button = DwellButton("pause", "Pause", self.pause, icon="⏸️", variant="nav", label_px=44)
-        self.pause_button.setParent(self.canvas)
-        self.pause_button.setGeometry(pause_x, theme.BAR_Y, PAUSE_W, theme.BAR_H)
-        # On the keyboard page Speak sits beside Pause, and the message bar gives up the room for it.
-        speak_x = pause_x - theme.GAP - PAUSE_W
-        self.speak_button = DwellButton("speak", "Speak", self._on_speak, icon="🔊", variant="nav", label_px=44)
-        self.speak_button.setParent(self.canvas)
-        self.speak_button.setGeometry(speak_x, theme.BAR_Y, PAUSE_W, theme.BAR_H)
+        w = theme.BAR_BUTTON_W
+        pause_x = area[0] + area[2] - w
+        self.pause_button = self._bar_button("pause", "Pause", self.pause, "⏸️", pause_x)
+        # On the keyboard page Speak and Needs sit beside Pause, and the message bar gives up the room for them.
+        needs_x = pause_x - theme.GAP - w
+        self.needs_button = self._bar_button("needs", "Needs", lambda: self.show_page(self.needs_page), "🏠", needs_x)
+        speak_x = needs_x - theme.GAP - w
+        self.speak_button = self._bar_button("speak", "Speak", self._on_speak, "🔊", speak_x)
         self.bar = MessageBar(self.canvas)
         self._bar_widths = {"needs": pause_x - theme.GAP - theme.MARGIN, "keyboard": speak_x - theme.GAP - theme.MARGIN}
         self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, self._bar_widths["needs"], theme.BAR_H)
@@ -103,9 +101,13 @@ class MainWindow(QGraphicsView):
             cfg.needs, self._on_need, lambda: self.show_page(self.keyboard_page), area, self.canvas
         )
         self.predictor = Predictor(DATA_DIR / "words.json", extra_words=[n.label for n in cfg.needs])
+        # The keyboard's side columns are big enough to sit nearer the screen edges than the keys.
+        keyboard_area = theme.content_area(
+            min(cfg.display.side_margin_px, theme.KEYBOARD_SIDE_MARGIN), cfg.display.bottom_margin_px
+        )
         self.keyboard_page = KeyboardPage(
-            self._on_letter, self._on_word, self._on_delete, self._on_clear,
-            lambda: self.show_page(self.needs_page), area, self.canvas,
+            self._on_letter, self._on_word, self._on_delete, self._on_clear, self._on_answer,
+            keyboard_area, self.canvas,
         )
         self.page: Page = self.needs_page
         self.keyboard_page.hide()
@@ -230,10 +232,16 @@ class MainWindow(QGraphicsView):
 
     # Pages
 
+    def _bar_button(self, key: str, label: str, on_select, icon: str, x: int) -> DwellButton:
+        button = DwellButton(key, label, on_select, icon=icon, variant="nav", label_px=40)
+        button.setParent(self.canvas)
+        button.setGeometry(x, theme.BAR_Y, theme.BAR_BUTTON_W, theme.BAR_H)
+        return button
+
     def _bar_buttons(self):
         """The buttons in the message bar row on the current page."""
         if self.page is self.keyboard_page:
-            return [self.speak_button, self.pause_button]
+            return [self.speak_button, self.needs_button, self.pause_button]
         return [self.pause_button]
 
     def show_page(self, page: Page) -> None:
@@ -246,6 +254,7 @@ class MainWindow(QGraphicsView):
         page.show()
         keyboard = page is self.keyboard_page
         self.speak_button.setVisible(keyboard)
+        self.needs_button.setVisible(keyboard)
         self.bar.resize(self._bar_widths["keyboard" if keyboard else "needs"], theme.BAR_H)
         self.gaze_dot.raise_()
         if page is self.keyboard_page:
@@ -274,6 +283,12 @@ class MainWindow(QGraphicsView):
 
     def _sentence(self) -> str:
         return " ".join(self.typed.split()).capitalize()
+
+    def _on_answer(self, english: str, thai: str) -> None:
+        """Yes or No: spoken at once, and the typed text stays for the next key."""
+        self.bar.show_message(english, thai)
+        self._log(english, thai)
+        self.speaker.speak(thai, "th")
 
     def _on_letter(self, ch: str) -> None:
         self.typed += ch
