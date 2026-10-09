@@ -1,4 +1,10 @@
-"""Start-up calibration: position check, 5-point calibration, validation, then Accept or Retry.
+"""Start-up calibration: position check, 9-point calibration, validation, then Accept or Retry.
+
+Both the calibration and the validation dots reach out to the screen edges, where the buttons the
+patient finds hardest to choose sit. The validation misses become the edge correction
+(gaze/correction.py), which the main screen then takes out of every gaze sample. On the result
+screen the live gaze is drawn with that correction applied, so the caregiver can ask the patient
+to look at the dots again and see whether the gaze now lands on them.
 
 A calibration point whose data came out much worse than the rest (typically a bottom corner, where
 the eyelids cover the eyes from the tracker's view) is shown once more and collected again before
@@ -33,14 +39,28 @@ from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QPushButton, QWidget
 
+from ..gaze.correction import EdgeCorrection
 from ..gaze.source import GazeSample
 from . import theme
 
-CALIBRATION_POINTS = [(0.5, 0.5), (0.1, 0.1), (0.9, 0.1), (0.1, 0.9), (0.9, 0.9)]
-VALIDATION_POINTS = [(0.3, 0.3), (0.7, 0.3), (0.5, 0.5), (0.3, 0.7), (0.7, 0.7)]
+# Corners and edge middles as well as the centre: with only the corners the tracker has nothing to
+# go on along the edges between them, and that is where the edge buttons sit.
+CALIBRATION_POINTS = [
+    (0.5, 0.5), (0.1, 0.1), (0.9, 0.1), (0.1, 0.9), (0.9, 0.9), (0.5, 0.1), (0.9, 0.5), (0.5, 0.9), (0.1, 0.5),
+]
+# A 3x3 grid out to the centres of the outermost buttons (Pause on top, the edge keys on the sides and
+# bottom), visited centre first and then once round the edge. Its misses become the edge correction.
+VALIDATION_XS = (0.08, 0.5, 0.92)
+VALIDATION_YS = (0.12, 0.5, 0.88)
+VALIDATION_POINTS = [
+    (0.5, 0.5), (0.08, 0.12), (0.5, 0.12), (0.92, 0.12), (0.92, 0.5), (0.92, 0.88), (0.5, 0.88), (0.08, 0.88),
+    (0.08, 0.5),
+]
 SHRINK_S = 1.2  # target shrinks to draw the eye before data is collected
 SETTLE_S = 0.8  # validation: ignore gaze while the eye moves to the target
 MEASURE_S = 1.0  # validation: average gaze over this long
+RESULT_BUTTONS_Y = 720  # result screen: Accept / Retry / Skip row
+MAX_RING_PX = 100  # result screen: the ring around a dot grows with its error up to this
 GOOD_PX = 60  # under this error a point is shown in the accent colour, above it in orange
 FACE_W_PX = 300  # position check: width of the face mask at a good distance (z = 0.5)
 LIVE_TRAIL_S = 0.3  # live gaze: recent samples drawn as a fading trail behind the current one
@@ -82,6 +102,12 @@ def eye_samples(sample: GazeSample, map_to_canvas) -> List[Sample]:
     ]
 
 
+def _median(values) -> float:
+    v = sorted(values)
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
 def radial_pattern(points: List[Tuple[float, float, float, float]], centre: Tuple[float, float]) -> Optional[str]:
     """'outward' or 'inward' when every off-centre miss points away from or towards the screen centre.
 
@@ -114,13 +140,18 @@ class CalibrationScreen(QWidget):
 
     def __init__(
         self, source, map_to_canvas: Callable[[float, float], QPointF], auto_accept_px: float = 0,
-        redo_px: float = 0, parent=None, show_live_gaze: bool = True,
+        redo_px: float = 0, parent=None, show_live_gaze: bool = True, edge_correction: bool = True,
+        screen_px: Tuple[int, int] = (theme.CANVAS_W, theme.CANVAS_H),
     ):
         super().__init__(parent)
         self.source = source
         self.map_to_canvas = map_to_canvas
         self.auto_accept_px = auto_accept_px
         self.redo_px = redo_px
+        self.edge_correction = edge_correction
+        self.screen_px = screen_px
+        self.correction: Optional[EdgeCorrection] = None  # learned from the validation misses
+        self.note = ""
         self.points: List[Tuple[float, float]] = list(CALIBRATION_POINTS)  # being collected in this pass
         self._redone = False
         self.setGeometry(0, 0, theme.CANVAS_W, theme.CANVAS_H)
@@ -135,6 +166,8 @@ class CalibrationScreen(QWidget):
         self.validation_errors: List[PointError] = []
         self._samples: List[Tuple[float, float]] = []
         self._raw_samples: List[Sample] = []  # validation: every sample measured at the current point
+        self._gaze: List[Tuple[float, float]] = []  # validation: the same samples, 0..1 across the monitor
+        self._misses: List[Tuple[Tuple[float, float], Optional[Tuple[float, float]]]] = []  # (dot, gaze), 0..1
         self.show_live_gaze = show_live_gaze
         self.show_samples = True
         self._live: "deque[Tuple[float, QPointF, List[Sample]]]" = deque()  # (time, combined, per eye)
@@ -163,6 +196,9 @@ class CalibrationScreen(QWidget):
     def feed(self, sample: GazeSample) -> None:
         if not sample.valid:
             return
+        measured = sample
+        if self.stage == "result" and self.correction is not None:
+            sample = self.correction.apply(sample)  # show what the main screen will see
         pt = self.map_to_canvas(sample.x, sample.y)
         eyes = eye_samples(sample, self.map_to_canvas)
         self._live.append((sample.t, pt, eyes))
@@ -174,6 +210,7 @@ class CalibrationScreen(QWidget):
         if SETTLE_S <= elapsed <= SETTLE_S + MEASURE_S:
             self._samples.append((pt.x(), pt.y()))
             self._raw_samples.extend(eyes)
+            self._gaze.append((measured.x, measured.y))
 
     # Flow
 
@@ -184,6 +221,8 @@ class CalibrationScreen(QWidget):
         self.stage = "calibrate"
         self.points = list(CALIBRATION_POINTS)
         self._redone = False
+        self.correction = None
+        self.note = ""
         self.point_index = 0
         self.message = "Look at the dot"
         self.source.enter_calibration()
@@ -238,6 +277,7 @@ class CalibrationScreen(QWidget):
             self.stage = "validate"
             self.point_index = 0
             self.validation_errors = []
+            self._misses = []
             self.message = "Look at the dot"
             self._begin_validation_point()
 
@@ -266,19 +306,22 @@ class CalibrationScreen(QWidget):
     def _begin_validation_point(self) -> None:
         self._samples = []
         self._raw_samples = []
+        self._gaze = []
         self.stage_started = time.monotonic()
 
     def _finish_validation_point(self) -> None:
         x, y = VALIDATION_POINTS[self.point_index]
         target = self.map_to_canvas(x, y)
         if self._samples:
-            mx = sum(s[0] for s in self._samples) / len(self._samples)
-            my = sum(s[1] for s in self._samples) / len(self._samples)
+            # Median, not mean: a stray sample (a glance away, a wild reading) does not drag it.
+            mx, my = _median(s[0] for s in self._samples), _median(s[1] for s in self._samples)
             err = math.hypot(mx - target.x(), my - target.y())
             gaze = QPointF(mx, my)
+            landed = (_median(g[0] for g in self._gaze), _median(g[1] for g in self._gaze))
         else:
-            err, gaze = None, None
+            err, gaze, landed = None, None, None
         self.validation_errors.append(PointError(x, y, err, gaze, self._raw_samples))
+        self._misses.append(((x, y), landed))
         self.point_index += 1
         if self.point_index < len(VALIDATION_POINTS):
             self._begin_validation_point()
@@ -288,6 +331,7 @@ class CalibrationScreen(QWidget):
     def _show_result(self) -> None:
         self.stage = "result"
         self.hint = ""
+        self.note = ""
         errors = [p.error_px for p in self.validation_errors]
         valid = [e for e in errors if e is not None]
         if valid:
@@ -309,6 +353,12 @@ class CalibrationScreen(QWidget):
         if pattern:
             where = "outside" if pattern == "outward" else "inside"
             self.hint = f"Gaze lands {where} every dot: {DISPLAY_SETUP_HINT}"
+        if self.edge_correction and valid:
+            self.correction = EdgeCorrection.from_misses(self._misses, self.screen_px)
+            self.note = (
+                f"Edge correction on (moves the gaze up to {self.correction.largest_shift_px(self.screen_px):.0f} px). "
+                "Live gaze is corrected: look at the dots to check."
+            )
         self._show_buttons("accept", "retry", "skip")
         if self.auto_accept_px > 0 and len(valid) == len(errors) and max(valid) <= self.auto_accept_px:
             self.message += ". Accepting automatically."
@@ -372,13 +422,15 @@ class CalibrationScreen(QWidget):
     # Drawing
 
     def _show_buttons(self, *names: str) -> None:
-        # Centred, so the bottom corner calibration points and their samples stay in view.
+        # Centred, so the bottom corner calibration points and their samples stay in view; on the
+        # result screen above the bottom row of dots, between it and the centre dot.
         w, gap = 380, 24
+        y = theme.CANVAS_H - 120 if self.stage == "position" else RESULT_BUTTONS_Y
         x = (theme.CANVAS_W - len(names) * w - (len(names) - 1) * gap) // 2
         for name, b in self._buttons.items():
             b.setVisible(name in names)
         for name in names:
-            self._buttons[name].setGeometry(x, theme.CANVAS_H - 120, w, 72)
+            self._buttons[name].setGeometry(x, y, w, 72)
             x += w + gap
 
     def paintEvent(self, _event) -> None:
@@ -499,23 +551,27 @@ class CalibrationScreen(QWidget):
             self._paint_error(p, pe, theme.TEXT_QUIET, label_above=True)  # the centre has both kinds of point
         for pe in self.validation_errors:
             color = theme.WARNING if pe.error_px is None or pe.error_px > GOOD_PX else theme.HOVER
-            self._paint_error(p, pe, color)
-        self._paint_text(p, "Calibration result", 100, 56)
-        self._paint_text(p, self.message, 180, 34, theme.TEXT_QUIET)
+            self._paint_error(p, pe, color, label_above=pe.y > 0.8)  # the bottom row has no room below
+        # Between the top row of dots and the centre dot.
+        self._paint_text(p, "Calibration result", 290, 52)
+        self._paint_text(p, self.message, 350, 32, theme.TEXT_QUIET)
+        if self.note:
+            self._paint_text(p, self.note, 398, 26, theme.HOVER)
         if self.hint:
             # On a backing box: the hint sits over the top validation circles.
             p.setFont(theme.font(30, bold=True))
             w = p.fontMetrics().horizontalAdvance(self.hint) + 48
             p.setPen(QPen(theme.WARNING, 2))
             p.setBrush(theme.SURFACE)
-            p.drawRoundedRect(QRectF((theme.CANVAS_W - w) / 2, 210, w, 56), 14, 14)
-            self._paint_text(p, self.hint, 238, 30, theme.WARNING)
+            p.drawRoundedRect(QRectF((theme.CANVAS_W - w) / 2, 414, w, 52), 14, 14)
+            self._paint_text(p, self.hint, 440, 28, theme.WARNING)
 
     def _paint_error(self, p: QPainter, pe: PointError, color, label_above: bool = False) -> None:
         center = self.map_to_canvas(pe.x, pe.y)
         p.setPen(QPen(color, 3))
         p.setBrush(Qt.NoBrush)
-        radius = max(10.0, min(pe.error_px if pe.error_px is not None else 40.0, 200.0))
+        # Capped so the labels of the 9 dots stay clear of the text in the middle.
+        radius = max(10.0, min(pe.error_px if pe.error_px is not None else 40.0, MAX_RING_PX))
         p.drawEllipse(center, radius, radius)
         if pe.gaze is not None:
             # Which way the gaze missed: all outward or all inward means a Display Setup problem.
@@ -547,9 +603,9 @@ class CalibrationScreen(QWidget):
                  if e in eyes]
         if any(not s.used for pe in self.calibration_errors for s in pe.samples):
             items.append(("unused", "not used"))
-        # A column at the middle of the left edge, the one place clear of every point and button.
+        # Below the buttons, between the bottom left and bottom middle dots.
         p.setFont(theme.font(22))
-        x, y = float(theme.MARGIN), theme.CANVAS_H / 2 - 18 * len(items)
+        x, y = 330.0, 880.0
         for kind, label in items:
             if kind == "unused":
                 p.setPen(QPen(theme.TEXT_QUIET, 2))

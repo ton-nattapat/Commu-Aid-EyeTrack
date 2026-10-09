@@ -22,6 +22,7 @@ from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QLabel, QWidget
 
 from ..config import AppConfig, NeedTile
 from ..dwell import DwellEngine
+from ..gaze.correction import EdgeCorrection, correction_path
 from ..gaze.filters import make_gaze_filter
 from ..gaze.source import GazeSample, GazeSource
 from ..predict import Predictor
@@ -139,6 +140,7 @@ class MainWindow(QGraphicsView):
             cfg.gaze_filter, (cfg.display.width, cfg.display.height), reset_after_s=d.blink_grace_s
         )
         self.last_sample: Optional[GazeSample] = None
+        self.correction: Optional[EdgeCorrection] = None  # edge correction from the last accepted calibration
         self.typed = ""
         self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
         self._request_id = 0
@@ -189,9 +191,11 @@ class MainWindow(QGraphicsView):
     def _tick(self) -> None:
         now = time.monotonic()
         for raw in self.source.poll():
-            self.last_sample = self.smoother.add(raw)
             if self.calibration is not None:
-                self.calibration.feed(raw)  # unfiltered: the calibration screen shows and measures every sample
+                self.calibration.feed(raw)  # unfiltered and uncorrected: the calibration screen measures every sample
+            elif self.correction is not None:
+                raw = self.correction.apply(raw)
+            self.last_sample = self.smoother.add(raw)
 
         if self.calibration is not None or self.settings.isVisible():
             self.gaze_dot.set_point(None)
@@ -214,7 +218,9 @@ class MainWindow(QGraphicsView):
                 if not b.isHidden():
                     pos = b.mapTo(self.canvas, QPoint(0, 0))
                     rects.append((b.key, (pos.x(), pos.y(), b.width(), b.height())))
-            target = pick_target(point.x(), point.y(), rects, self.cfg.display.snap_px)
+            # Not on the rest screen: a glance past the edge must not wake it.
+            outer = 0 if self.paused else self.cfg.display.edge_snap_px
+            target = pick_target(point.x(), point.y(), rects, self.cfg.display.snap_px, outer)
 
         update = engine.update(target, now)
         selected = None
@@ -371,6 +377,8 @@ class MainWindow(QGraphicsView):
         self.calibration = CalibrationScreen(
             self.source, self.map_to_canvas, self.cfg.calibration.auto_accept_max_error_px,
             self.cfg.calibration.redo_point_px, self.canvas, show_live_gaze=self.cfg.calibration.show_live_gaze,
+            edge_correction=self.cfg.calibration.edge_correction,
+            screen_px=(self.cfg.display.width, self.cfg.display.height),
         )
         self.calibration.finished.connect(self._on_calibration_finished)
         self.calibration.show()
@@ -379,8 +387,12 @@ class MainWindow(QGraphicsView):
     def _on_calibration_finished(self, outcome: str) -> None:
         path = self.cfg.calibration.saved_path
         if outcome == "accepted":
+            self.correction = self.calibration.correction
+            started = time.time()
             try:
                 self.source.save_calibration(path)
+                if path.exists() and path.stat().st_mtime >= started - 1:  # not the mouse demo, which saves nothing
+                    self._save_correction(correction_path(path))
             except Exception:
                 log.exception("Could not save calibration")
             self.bar.show_message("Calibration done", note="Look at a button to choose it")
@@ -398,10 +410,20 @@ class MainWindow(QGraphicsView):
         except Exception:
             log.exception("Could not load saved calibration")
             loaded = False
+        self.correction = None
+        if loaded and self.cfg.calibration.edge_correction:
+            self.correction = EdgeCorrection.load(correction_path(self.cfg.calibration.saved_path))
         if loaded:
             self.bar.show_message("Using the saved calibration", note="F2 to recalibrate")
         else:
             self.bar.show_message("Not calibrated", note="Press F2 to calibrate", warning=True)
+
+    def _save_correction(self, path: Path) -> None:
+        """Keep the edge correction beside the calibration it was measured with, or drop a stale one."""
+        if self.correction is not None:
+            self.correction.save(path)
+        elif path.exists():
+            path.unlink()
 
     # Settings
 

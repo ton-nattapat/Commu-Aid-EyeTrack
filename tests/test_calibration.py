@@ -132,7 +132,7 @@ def test_result_keeps_every_sample_per_eye(app):
             return ok, points
 
     screen = run_calibration(app, SampledTracker(bad=()), redo_px=0)
-    assert [len(pe.samples) for pe in screen.calibration_errors] == [2] * 5
+    assert [len(pe.samples) for pe in screen.calibration_errors] == [2] * len(CALIBRATION_POINTS)
     assert screen.calibration_errors[0].samples[1].used is False
 
     def gaze(x, y):
@@ -147,7 +147,7 @@ def test_result_keeps_every_sample_per_eye(app):
     assert screen.stage == "result"
     first = screen.validation_errors[0]
     assert [s.eye for s in first.samples] == ["left", "right", "left"]
-    assert first.samples[0].pos.x() == pytest.approx((0.3 - 0.01) * 1920)
+    assert first.samples[0].pos.x() == pytest.approx((0.5 - 0.01) * 1920)
     assert first.error_px == pytest.approx(0.0)
     screen.grab()  # paints the samples and legend without errors
 
@@ -213,3 +213,40 @@ def test_position_check_draws_the_face_mask(app):
     ]:
         source.user_position = lambda pos=pos: pos
         screen.grab()
+
+
+def test_validation_misses_become_the_edge_correction(app):
+    from commu_aid.gaze.source import GazeSample
+    from commu_aid.ui.calibration import VALIDATION_POINTS
+
+    screen = run_calibration(app, FakeTracker(bad=()), redo_px=0)
+    assert len(VALIDATION_POINTS) == 9
+    # Gaze lands 100 px below every bottom dot, on the dot elsewhere.
+    def gaze(x, y):
+        dy = 100 / 1080 if y > 0.8 else 0.0
+        return [GazeSample(time.monotonic(), x, y + dy, True)] * 5 + [GazeSample(time.monotonic(), 0.9, 0.1, True)]
+
+    finish_validation(screen, gaze)
+    assert screen.stage == "result" and screen.correction is not None
+    assert screen.correction.shift_at(0.5, 0.88)[1] * 1080 == pytest.approx(100)
+    assert "Edge correction on" in screen.note
+    # The live gaze on the result screen is corrected, so the caregiver can check it on the dots.
+    screen.feed(GazeSample(time.monotonic(), 0.5, 0.88 + 100 / 1080, True))
+    assert screen._live[-1][1].y() == pytest.approx(0.88 * 1080, abs=0.5)
+    screen.grab()
+
+
+def test_edge_correction_can_be_turned_off(app):
+    from commu_aid.gaze.source import GazeSample
+
+    screen = CalibrationScreen(
+        FakeTracker(bad=()), lambda x, y: QPointF(x * 1920, y * 1080), edge_correction=False
+    )
+    screen._timer.stop()
+    screen._run_in_worker = lambda fn: screen._on_worker_done(fn())
+    screen.start_calibration()
+    while screen.stage == "calibrate":
+        screen.stage_started = time.monotonic() - 5
+        screen._tick()
+    finish_validation(screen, lambda x, y: [GazeSample(time.monotonic(), x, y, True)])
+    assert screen.stage == "result" and screen.correction is None and screen.note == ""
