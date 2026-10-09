@@ -1,6 +1,6 @@
 # Plan: caregiver typing from the physical keyboard
 
-Status: plan only, no code yet. Waiting for the PR priority ranking before work starts.
+Status: built in PR #15, on top of the new keyboard layout (PR #21).
 
 ## Problem
 
@@ -16,7 +16,7 @@ calibration, Settings or the rest screen, which keep their own key handling).
 
 | Key | Action |
 | --- | --- |
-| A–Z | Add the letter (uppercase, same as the on-screen keys) |
+| A–Z, 0–9 | Add the letter or number (uppercase, same as the on-screen keys) |
 | Space | Add a space |
 | Backspace | Delete one character (same as Delete) |
 | Shift+Backspace | Clear the whole box (same as Clear) |
@@ -30,14 +30,14 @@ calibration, Settings or the rest screen, which keep their own key handling).
 - Existing shortcuts stay as they are: F2 Calibration, F3 Settings, F4 Pause,
   Ctrl+G gaze dot, F11 full screen, Ctrl+Q quit. Esc stays reserved for closing
   Settings and skipping calibration.
-- Digits are left for the number row PR (item 4); once that lands, 0–9 map to it.
+- Number keys (top row and keypad) type into the number row added by the new layout.
+- Ctrl, Alt and Cmd combinations are left alone so they never type by accident.
 
-## Open questions for Ton
+## Defaults chosen (Ton had not answered yet)
 
-1. Should Enter speak straight away, or only move the cursor focus so the caregiver
-   checks first? Default in this plan: Enter speaks.
-2. Should caregiver typing also be learned by word prediction? Default: yes, the
-   same as gaze typing, since `_on_speak` already calls `predictor.learn`.
+1. Enter speaks straight away.
+2. Word prediction learns from caregiver typing too, the same as gaze typing, since
+   `_on_speak` already calls `predictor.learn`.
 
 ## Tests
 

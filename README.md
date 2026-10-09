@@ -238,6 +238,11 @@ Caregiver keys:
 
 On a Mac keyboard, hold **fn** to use F2, F3, F4 and F11.
 
+A caregiver can also fix the message box from the keyboard. Letters, numbers and Space type
+into it (from the Needs page this opens the keyboard page), Backspace deletes one character,
+Shift+Backspace clears the box and Enter speaks it. These keys do nothing while calibration,
+Settings or the rest screen is showing.
+
 On the calibration screen: **Space** starts, **Enter** accepts, **R** retries, **Esc** skips and
 uses the saved calibration, **G** shows or hides the live gaze, and **S** shows or hides the gaze
 samples on the result screen. The live gaze is unfiltered, so it shows what the tracker reports;

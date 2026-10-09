@@ -455,6 +455,36 @@ class MainWindow(QGraphicsView):
 
     # Caregiver keys
 
+    def keyPressEvent(self, event) -> None:
+        """A caregiver can type on the Mac keyboard to fix what noisy gaze typed: letters, numbers,
+        Space, Backspace (Delete), Shift+Backspace (Clear) and Enter (Speak). Calibration, Settings
+        and the rest screen keep their own keys."""
+        if self.calibration is not None or self.settings.isVisible() or self.paused:
+            super().keyPressEvent(event)
+            return
+        action = self._caregiver_key(event)
+        if action is None:
+            super().keyPressEvent(event)
+            return
+        self.show_page(self.keyboard_page)
+        action()
+
+    def _caregiver_key(self, event):
+        mods = event.modifiers() & ~(Qt.KeypadModifier | Qt.ShiftModifier)
+        if mods:
+            return None  # Ctrl, Alt and Cmd combinations are shortcuts, not typing
+        key = event.key()
+        if key == Qt.Key_Backspace:
+            return self._on_clear if event.modifiers() & Qt.ShiftModifier else self._on_delete
+        if key in (Qt.Key_Return, Qt.Key_Enter):
+            return self._on_speak
+        if key == Qt.Key_Space:
+            return lambda: self._on_letter(" ")
+        if Qt.Key_A <= key <= Qt.Key_Z or Qt.Key_0 <= key <= Qt.Key_9:
+            ch = chr(key)  # Qt key codes for A-Z and 0-9 are their ASCII codes
+            return lambda: self._on_letter(ch)
+        return None
+
     def _toggle_gaze_dot(self) -> None:
         self.show_gaze_dot = not self.show_gaze_dot
 
