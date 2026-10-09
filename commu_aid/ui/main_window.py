@@ -133,7 +133,8 @@ class MainWindow(QGraphicsView):
             widget.show()
 
         d = cfg.dwell
-        self.dwell = DwellEngine(d.dwell_time_s, d.blink_grace_s, d.cooldown_s)
+        self.dwell = DwellEngine(d.dwell_time_s, d.blink_grace_s, d.cooldown_s, d.wobble_grace_s)
+        # Resume keeps the short blink grace only, so two short looks never add up to a resume.
         self.resume_dwell = DwellEngine(cfg.pause.resume_dwell_s, d.blink_grace_s, d.cooldown_s)
         self.smoother = make_gaze_filter(
             cfg.gaze_filter, (cfg.display.width, cfg.display.height), reset_after_s=d.blink_grace_s
@@ -421,6 +422,10 @@ class MainWindow(QGraphicsView):
 
     def _apply_settings(self) -> None:
         self.dwell.dwell_time_s = self.cfg.dwell.dwell_time_s
+        self.dwell.wobble_grace_s = self.cfg.dwell.wobble_grace_s
+        c = self.cfg
+        # A new filter starts afresh, so the gaze point jumps straight to where the eyes are.
+        self.smoother = make_gaze_filter(c.gaze_filter, (c.display.width, c.display.height), c.dwell.blink_grace_s)
         self.needs_page.set_needs(self.cfg.needs)
         self.bar.show_message("Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s")
 

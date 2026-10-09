@@ -220,6 +220,99 @@ def test_settings_snaps_an_odd_dwell_time_to_the_nearest_half_second(setup, tmp_
     assert w.dwell.dwell_time_s == 2.0
 
 
+def test_settings_wobble_grace_is_off_to_one_second(setup, tmp_path):
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.open_settings()
+    assert w.settings.wobble_value.text() == "0.5 s"
+    w.settings.wobble_more.click()
+    assert w.settings.wobble_value.text() == "1.0 s"
+    assert not w.settings.wobble_more.isEnabled()
+    w.settings.wobble_less.click()
+    w.settings.wobble_less.click()
+    assert w.settings.wobble_value.text() == "Off"
+    assert not w.settings.wobble_less.isEnabled()
+    w.settings.wobble_more.click()
+    w.settings.wobble_more.click()
+    w.settings.save()
+    assert w.dwell.wobble_grace_s == 1.0
+    assert "wobble_grace_s: 1.0" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+
+
+def test_settings_gaze_steadiness_sets_the_fixation_radius(setup, tmp_path):
+    from commu_aid.gaze.filters import FixationFilter
+
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.open_settings()
+    s = w.settings
+    assert s.steady_value.text() == "High" and not s.steady_reset.isEnabled()
+    s.steady_more.click()
+    assert s.steady_value.text() == "Strong" and not s.steady_more.isEnabled()
+    for _ in range(5):
+        s.steady_less.click()
+    assert s.steady_value.text() == "Light" and not s.steady_less.isEnabled()
+    s.steady_more.click()
+    s.save()
+    assert isinstance(w.smoother, FixationFilter) and w.smoother.radius_px == 80
+    assert "fixation_radius_px: 80" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    w.open_settings()
+    assert w.settings.steady_value.text() == "Low"
+    w.settings.steady_reset.click()
+    w.settings.save()
+    assert w.smoother.radius_px == 120
+
+
+def test_settings_keeps_a_hand_tuned_filter_unless_steadiness_changes(setup, tmp_path):
+    from commu_aid.gaze.filters import FixationFilter, OneEuroFilter
+
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.cfg.gaze_filter.fixation_radius_px = 110
+    w.open_settings()
+    assert w.settings.steady_value.text() in ("Medium", "High")
+    w.settings.save()
+    assert w.cfg.gaze_filter.fixation_radius_px == 110
+
+    w.cfg.gaze_filter.method = "one_euro"
+    w.open_settings()
+    assert "one_euro" in w.settings.steady_hint.text()
+    w.settings.save()
+    assert isinstance(w.smoother, OneEuroFilter)
+    w.open_settings()
+    w.settings.steady_more.click()
+    w.settings.save()
+    assert w.cfg.gaze_filter.method == "fixation" and isinstance(w.smoother, FixationFilter)
+
+
+def test_settings_page_shows_every_needs_row(setup):
+    make = setup[0]
+    w = make()
+    w.open_settings()
+    table = w.settings.table
+    rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
+    assert rows <= table.viewport().height()
+    assert not table.verticalScrollBar().isVisible()
+
+
+def test_wobble_onto_neighbour_key_keeps_progress(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    a, b = button(w.keyboard_page, ("key", "A")), button(w.keyboard_page, ("key", "S"))
+    look_at(w, source, a)
+    dwell(w, clock, app, 2.0)
+    look_at(w, source, b)
+    dwell(w, clock, app, 0.3)
+    assert b.progress == 0.0 and a.progress > 0.6
+    look_at(w, source, a)
+    dwell(w, clock, app, 1.1)
+    assert w.typed.lower() == "a"  # 2.0 s + 1.1 s on A reaches the 3 s dwell; the wobble did not reset it
+
+
 def test_settings_save_changes_dwell_and_tiles(setup, app, tmp_path):
     make, clock, source, speaker, _ = setup
     w = make()
@@ -367,6 +460,20 @@ def test_glance_at_resume_does_not_wake(setup, app):
     look_at(w, source, w.pause_screen.resume_button)
     dwell(w, clock, app, 2.0)
     assert w.paused  # two short looks never add up to the full resume dwell
+
+
+def test_glance_at_resume_does_not_wake_with_long_wobble_grace(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.cfg.dwell.wobble_grace_s = w.dwell.wobble_grace_s = 1.0
+    w.pause()
+    look_at(w, source, w.pause_screen.resume_button)
+    dwell(w, clock, app, 2.0)
+    source.point = None
+    dwell(w, clock, app, 1.0)
+    look_at(w, source, w.pause_screen.resume_button)
+    dwell(w, clock, app, 2.5)
+    assert w.paused  # Resume keeps the short blink grace, so the 1 s gap still resets it
 
 
 def test_caregiver_key_toggles_pause(setup):

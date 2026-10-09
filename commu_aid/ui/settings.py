@@ -1,4 +1,4 @@
-"""Caregiver Settings page (F3): dwell time and the Needs tiles, saved to config.yaml."""
+"""Caregiver Settings page (F3): dwell time, gaze steadiness and the Needs tiles, saved to config.yaml."""
 
 from __future__ import annotations
 
@@ -19,7 +19,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..config import DWELL_MAX_S, DWELL_MIN_S, DWELL_STEP_S, NEEDS_TILE_COUNT, AppConfig, NeedTile, clamp_dwell
+from ..config import (
+    DWELL_MAX_S,
+    DWELL_MIN_S,
+    DWELL_STEP_S,
+    NEEDS_TILE_COUNT,
+    STEADINESS_DEFAULT,
+    STEADINESS_NAMES,
+    STEADINESS_RADII_PX,
+    WOBBLE_GRACE_MAX_S,
+    AppConfig,
+    NeedTile,
+    clamp_dwell,
+    clamp_wobble_grace,
+    steadiness_level,
+)
 from . import theme
 
 STYLE = """
@@ -42,6 +56,7 @@ QSlider::handle:horizontal { width: 44px; height: 44px; margin: -18px 0; border-
 
 SLIDER_HANDLE = 56  # px, QSlider::handle width plus its border above
 STEP_BUTTON = 110  # theme.MIN_TARGET
+LABEL_W = 300  # row labels share one width so the - / + buttons line up
 
 
 def _steps(seconds: float) -> int:
@@ -80,17 +95,28 @@ class SettingsPage(QWidget):
         self.setGeometry(0, 0, theme.CANVAS_W, theme.CANVAS_H)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(theme.MARGIN, 24, theme.MARGIN, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(theme.MARGIN, 16, theme.MARGIN, 16)
+        layout.setSpacing(12)
 
+        # Cancel and Save share the title row, leaving room for all 11 Needs rows below the controls.
+        title_row = QHBoxLayout()
         title = QLabel("Caregiver settings")
         title.setFont(theme.font(56, bold=True))
-        layout.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+        cancel = QPushButton("Cancel (Esc)")
+        cancel.clicked.connect(self.cancel)
+        save = QPushButton("Save")
+        save.clicked.connect(self.save)
+        title_row.addWidget(cancel)
+        title_row.addWidget(save)
+        layout.addLayout(title_row)
 
         dwell_row = QHBoxLayout()
         dwell_row.setSpacing(theme.GAP)
         dwell_label = QLabel("Dwell time")
         dwell_label.setFont(theme.font(32, bold=True))
+        dwell_label.setMinimumWidth(LABEL_W)
         self.dwell_value = QLabel()
         self.dwell_value.setFont(theme.font(40, bold=True))
         self.dwell_value.setMinimumWidth(160)
@@ -114,6 +140,60 @@ class SettingsPage(QWidget):
         dwell_row.addWidget(self.dwell_value)
         layout.addLayout(dwell_row)
 
+        # Wobble grace: how long gaze may slip onto a neighbouring button and come back without
+        # losing progress. Same 0.5 s steps as the dwell slider; three values need no slider.
+        wobble_row = QHBoxLayout()
+        wobble_row.setSpacing(theme.GAP)
+        wobble_label = QLabel("Wobble grace")
+        wobble_label.setFont(theme.font(32, bold=True))
+        wobble_label.setMinimumWidth(LABEL_W)
+        self.wobble_steps = 0
+        self.wobble_less = self._button("\u2212", lambda: self._set_wobble(self.wobble_steps - 1))
+        self.wobble_more = self._button("+", lambda: self._set_wobble(self.wobble_steps + 1))
+        self.wobble_value = QLabel()
+        self.wobble_value.setFont(theme.font(40, bold=True))
+        self.wobble_value.setMinimumWidth(200)
+        self.wobble_value.setAlignment(Qt.AlignCenter)
+        wobble_hint = QLabel("Gaze may slip onto the next button this long and come back without starting over")
+        wobble_hint.setFont(theme.font(24))
+        wobble_hint.setStyleSheet("color: #9aa5b1;")
+        wobble_hint.setWordWrap(True)
+        wobble_row.addWidget(wobble_label)
+        wobble_row.addWidget(self.wobble_less)
+        wobble_row.addWidget(self.wobble_value)
+        wobble_row.addWidget(self.wobble_more)
+        wobble_row.addWidget(wobble_hint, 1)
+        layout.addLayout(wobble_row)
+
+        # Gaze steadiness: how far the gaze point may shake and still count as one spot
+        # (the fixation filter's radius). Five named levels instead of raw pixels.
+        steady_row = QHBoxLayout()
+        steady_row.setSpacing(theme.GAP)
+        steady_label = QLabel("Gaze steadiness")
+        steady_label.setFont(theme.font(32, bold=True))
+        steady_label.setMinimumWidth(LABEL_W)
+        self.steady_level = STEADINESS_DEFAULT
+        self.loaded_steady_level = STEADINESS_DEFAULT
+        self.steady_less = self._button("\u2212", lambda: self._set_steadiness(self.steady_level - 1))
+        self.steady_more = self._button("+", lambda: self._set_steadiness(self.steady_level + 1))
+        self.steady_value = QLabel()
+        self.steady_value.setFont(theme.font(40, bold=True))
+        self.steady_value.setMinimumWidth(200)
+        self.steady_value.setAlignment(Qt.AlignCenter)
+        self.steady_hint = QLabel()
+        self.steady_hint.setFont(theme.font(24))
+        self.steady_hint.setStyleSheet("color: #9aa5b1;")
+        self.steady_hint.setWordWrap(True)
+        self.steady_reset = QPushButton("Recommended")
+        self.steady_reset.clicked.connect(lambda: self._set_steadiness(STEADINESS_DEFAULT))
+        steady_row.addWidget(steady_label)
+        steady_row.addWidget(self.steady_less)
+        steady_row.addWidget(self.steady_value)
+        steady_row.addWidget(self.steady_more)
+        steady_row.addWidget(self.steady_hint, 1)
+        steady_row.addWidget(self.steady_reset)
+        layout.addLayout(steady_row)
+
         tiles_label = QLabel("Needs tiles (the 12th tile always opens the keyboard)")
         tiles_label.setFont(theme.font(32, bold=True))
         layout.addWidget(tiles_label)
@@ -127,22 +207,15 @@ class SettingsPage(QWidget):
         header.setSectionResizeMode(3, QHeaderView.Fixed)
         self.table.setColumnWidth(0, 120)
         self.table.setColumnWidth(3, 220)
-        self.table.verticalHeader().setDefaultSectionSize(54)
+        self.table.verticalHeader().setDefaultSectionSize(44)  # all 11 rows fit under the three control rows
         layout.addWidget(self.table, 1)
-
-        buttons = QHBoxLayout()
-        buttons.addStretch(1)
-        cancel = QPushButton("Cancel (Esc)")
-        cancel.clicked.connect(self.cancel)
-        save = QPushButton("Save")
-        save.clicked.connect(self.save)
-        buttons.addWidget(cancel)
-        buttons.addWidget(save)
-        layout.addLayout(buttons)
 
     def load(self) -> None:
         self.dwell_slider.setValue(_steps(self.cfg.dwell.dwell_time_s))
         self._show_dwell(self.dwell_slider.value())
+        self._set_wobble(round(clamp_wobble_grace(self.cfg.dwell.wobble_grace_s) / DWELL_STEP_S))
+        self.loaded_steady_level = steadiness_level(self.cfg.gaze_filter.fixation_radius_px)
+        self._set_steadiness(self.loaded_steady_level)
         for row in range(NEEDS_TILE_COUNT):
             tile = self.cfg.needs[row] if row < len(self.cfg.needs) else NeedTile("", "")
             for col, value in enumerate((tile.icon, tile.label, tile.thai)):
@@ -154,6 +227,12 @@ class SettingsPage(QWidget):
 
     def save(self) -> None:
         self.cfg.dwell.dwell_time_s = clamp_dwell(self.dwell_slider.value() * DWELL_STEP_S)
+        self.cfg.dwell.wobble_grace_s = clamp_wobble_grace(self.wobble_steps * DWELL_STEP_S)
+        if self.steady_level != self.loaded_steady_level:
+            # Only a change from the page writes the radius, so a hand-tuned value between levels
+            # survives a Save. Steadiness is the fixation filter's setting, so it switches to that.
+            self.cfg.gaze_filter.method = "fixation"
+            self.cfg.gaze_filter.fixation_radius_px = STEADINESS_RADII_PX[self.steady_level]
         needs = []
         for row in range(NEEDS_TILE_COUNT):
             icon, label, thai = (self._text(row, c) for c in range(3))
@@ -167,11 +246,35 @@ class SettingsPage(QWidget):
         self.on_closed()
 
     def _step_button(self, text: str, direction: int) -> QPushButton:
+        return self._button(text, lambda: self.dwell_slider.setValue(self.dwell_slider.value() + direction))
+
+    def _button(self, text: str, on_click) -> QPushButton:
         button = QPushButton(text)
         button.setObjectName("dwellStep")
         button.setFixedSize(STEP_BUTTON, STEP_BUTTON)
-        button.clicked.connect(lambda: self.dwell_slider.setValue(self.dwell_slider.value() + direction))
+        button.clicked.connect(on_click)
         return button
+
+    def _set_wobble(self, steps: int) -> None:
+        top = round(WOBBLE_GRACE_MAX_S / DWELL_STEP_S)
+        self.wobble_steps = max(0, min(top, steps))
+        seconds = self.wobble_steps * DWELL_STEP_S
+        self.wobble_value.setText(f"{seconds:.1f} s" if seconds else "Off")
+        self.wobble_less.setEnabled(self.wobble_steps > 0)
+        self.wobble_more.setEnabled(self.wobble_steps < top)
+
+    def _set_steadiness(self, level: int) -> None:
+        top = len(STEADINESS_RADII_PX) - 1
+        self.steady_level = max(0, min(top, level))
+        self.steady_value.setText(STEADINESS_NAMES[self.steady_level])
+        self.steady_less.setEnabled(self.steady_level > 0)
+        self.steady_more.setEnabled(self.steady_level < top)
+        self.steady_reset.setEnabled(self.steady_level != STEADINESS_DEFAULT)
+        hint = "Stronger holds a shaky gaze still; lighter follows small moves. Recommended: High."
+        if self.cfg.gaze_filter.method != "fixation" and self.steady_level == self.loaded_steady_level:
+            method = self.cfg.gaze_filter.method
+            hint = f"config.yaml uses the {method} filter; changing this switches to the steady one."
+        self.steady_hint.setText(hint)
 
     def _show_dwell(self, steps: int) -> None:
         self.dwell_value.setText(f"{steps * DWELL_STEP_S:.1f} s")

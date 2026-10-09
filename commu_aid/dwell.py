@@ -6,8 +6,11 @@ with a timestamp, and it reports progress and fires selections.
 States, per the design:
   Idle      gaze on no button
   Dwelling  gaze on a button; its timer runs and progress fills
-  Grace     gaze left (blink or off-button); progress is held for `blink_grace_s`,
-            then reset if gaze has not come back
+  Grace     gaze left (blink, off-button, or a wobble onto a neighbouring button); progress
+            is held, then reset if gaze has not come back in time. A gap on no button is
+            forgiven for `blink_grace_s` or `wobble_grace_s`, whichever is longer; a wobble
+            onto another button for `wobble_grace_s`. If gaze stays on the other button past
+            that, it takes over with the time it has already spent there.
   Selected  timer reached `dwell_time_s`; a selection is returned once
   Locked    the selected button ignores gaze until gaze leaves it, and nothing can be
             selected until `cooldown_s` has passed
@@ -30,9 +33,16 @@ class DwellUpdate:
 
 
 class DwellEngine:
-    def __init__(self, dwell_time_s: float = 3.0, blink_grace_s: float = 0.3, cooldown_s: float = 1.0):
+    def __init__(
+        self,
+        dwell_time_s: float = 3.0,
+        blink_grace_s: float = 0.3,
+        cooldown_s: float = 1.0,
+        wobble_grace_s: float = 0.0,
+    ):
         self.dwell_time_s = dwell_time_s
         self.blink_grace_s = blink_grace_s
+        self.wobble_grace_s = wobble_grace_s
         self.cooldown_s = cooldown_s
         self.reset()
 
@@ -41,6 +51,8 @@ class DwellEngine:
         self._elapsed = 0.0
         self._last_now: Optional[float] = None
         self._last_on_current: Optional[float] = None
+        self._other: Optional[Hashable] = None  # another button gaze wobbled onto during grace
+        self._other_elapsed = 0.0
         self._locked: Optional[Hashable] = None
         self._cooldown_until = float("-inf")
 
@@ -62,15 +74,31 @@ class DwellEngine:
 
         if target is None:
             # Grace: hold progress briefly so a blink or a jitter off the edge does not reset it.
+            self._other = None
             if self._current is not None and self._last_on_current is not None:
-                if now - self._last_on_current > self.blink_grace_s:
+                if now - self._last_on_current > max(self.blink_grace_s, self.wobble_grace_s):
                     self._clear_current()
             return DwellUpdate(self._current, self._progress())
 
-        if target != self._current:
+        if self._current is not None and target != self._current and self._last_on_current is not None:
+            # Wobble onto another button: hold the current button's progress during the grace
+            # time, and count the other button's time in case the gaze really moved there.
+            if target != self._other:
+                self._other = target
+                self._other_elapsed = 0.0
+            elif not cooling:
+                self._other_elapsed += dt
+            if now - self._last_on_current <= self.wobble_grace_s:
+                return DwellUpdate(self._current, self._progress())
+            self._current = target
+            self._elapsed = self._other_elapsed
+            self._other = None
+            dt = 0.0
+        elif target != self._current:
             self._current = target
             self._elapsed = 0.0
             dt = 0.0
+        self._other = None
         self._last_on_current = now
 
         if cooling:
@@ -94,3 +122,4 @@ class DwellEngine:
         self._current = None
         self._elapsed = 0.0
         self._last_on_current = None
+        self._other = None
