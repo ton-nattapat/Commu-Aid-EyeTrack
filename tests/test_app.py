@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from commu_aid.config import load_config  # noqa: E402
 from commu_aid.gaze.source import GazeSample, GazeSource  # noqa: E402
 from commu_aid.translate import TranslationError  # noqa: E402
-from commu_aid.ui import main_window  # noqa: E402
+from commu_aid.ui import main_window, theme  # noqa: E402
 from tests.test_config import ROOT  # noqa: E402
 
 
@@ -176,10 +176,12 @@ def test_page_switch_does_not_bounce_back(setup, app):
     look_at(w, source, button(w.needs_page, "nav"))
     dwell(w, clock, app, 3.2)
     assert w.page is w.keyboard_page
-    # The Needs button sits in the same corner; a continued stare must not switch straight back.
-    look_at(w, source, button(w.keyboard_page, "nav"))
+    # A continued stare at the same spot must not switch straight back.
     dwell(w, clock, app, 5.0)
     assert w.page is w.keyboard_page
+    look_at(w, source, w.needs_button)
+    dwell(w, clock, app, 3.2)
+    assert w.page is w.needs_page
 
 
 def test_settings_hint_sits_below_the_buttons_and_hides_under_settings(setup):
@@ -302,6 +304,77 @@ def test_clear_empties_the_text_box(setup, app):
     assert w.bar.english == ""
 
 
+def type_keys(w, clock, source, app, letters):
+    for ch in letters:
+        look_at(w, source, button(w.keyboard_page, ("key", ch)))
+        dwell(w, clock, app, 3.2)
+        source.point = None
+        dwell(w, clock, app, 1.2)
+
+
+def test_resume_keeps_the_typed_text_in_the_box(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    type_keys(w, clock, source, app, "HI")
+    w.pause()
+    w.resume()
+    assert w.typed == "HI"
+    assert w.bar.typing and w.bar.english == "HI"  # what the box shows is what the next key adds to
+    assert "Welcome back" in w.bar.note
+    type_keys(w, clock, source, app, "M")
+    assert w.bar.english == "HIM"
+
+
+def test_clear_after_resume_empties_the_box_for_good(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    type_keys(w, clock, source, app, "HI")
+    w.pause()
+    w.resume()
+    look_at(w, source, button(w.keyboard_page, "clear"))
+    dwell(w, clock, app, 3.2)
+    source.point = None
+    dwell(w, clock, app, 1.2)
+    type_keys(w, clock, source, app, "A")
+    assert w.typed == "A" and w.bar.english == "A"
+
+
+def test_status_messages_on_the_keyboard_page_keep_the_typed_text(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "WATER"
+    w._show_typed()
+    for status in (w._apply_settings, w._use_saved_calibration):
+        status()
+        assert w.bar.typing and w.bar.english == "WATER", status
+        assert w.bar.note
+
+
+def test_resume_on_the_needs_page_shows_welcome_back(setup):
+    w = setup[0]()
+    w.pause()
+    w.resume()
+    assert not w.bar.typing and w.bar.english == "Welcome back"
+
+
+def test_typing_during_translation_is_not_hidden_by_the_result(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    w._on_speak()
+    w._on_letter("X")  # the patient starts the next word before the translation is back
+    for _ in range(50):
+        app.processEvents()
+        if speaker.spoken:
+            break
+    assert speaker.spoken == [("TH:Hi", "th")]
+    assert w.bar.typing and w.bar.english == "HIX"
+
+
 def test_keyboard_targets_stay_large(setup):
     w = setup[0]()
     for b in w.keyboard_page.buttons:
@@ -311,10 +384,15 @@ def test_keyboard_targets_stay_large(setup):
 def test_buttons_stay_clear_of_the_screen_edges(setup):
     w = setup[0]()
     d = w.cfg.display
-    buttons = [*w.needs_page.buttons, *w.keyboard_page.buttons, w.pause_button, w.speak_button, w.pause_screen.resume_button]
+    columns = {"yes", "no", "delete", "clear"}  # big enough to sit nearer the side edges than the keys
+    buttons = [
+        *w.needs_page.buttons, *w.keyboard_page.buttons,
+        w.pause_button, w.speak_button, w.needs_button, w.pause_screen.resume_button,
+    ]
     for b in buttons:
         pos = b.mapTo(w.canvas, QPoint(0, 0))
-        assert pos.x() >= d.side_margin_px and pos.x() + b.width() <= 1920 - d.side_margin_px, b.key
+        side = min(d.side_margin_px, theme.KEYBOARD_SIDE_MARGIN) if b.key in columns else d.side_margin_px
+        assert pos.x() >= side and pos.x() + b.width() <= 1920 - side, b.key
         assert pos.y() + b.height() <= 1080 - d.bottom_margin_px, b.key
 
 
@@ -377,14 +455,59 @@ def test_caregiver_key_toggles_pause(setup):
     assert not w.paused
 
 
-def test_speak_sits_beside_pause_on_the_keyboard_page_only(setup, app):
+def test_speak_and_needs_sit_beside_pause_on_the_keyboard_page_only(setup, app):
     make, clock, source, speaker, _ = setup
     w = make()
-    assert w.speak_button.isHidden()
+    assert w.speak_button.isHidden() and w.needs_button.isHidden()
     w.show_page(w.keyboard_page)
-    assert w.speak_button.isVisible()
-    assert w.speak_button.y() == w.pause_button.y()
-    assert w.speak_button.geometry().right() < w.pause_button.x()
+    assert w.speak_button.isVisible() and w.needs_button.isVisible()
+    assert w.speak_button.y() == w.needs_button.y() == w.pause_button.y()
     assert w.bar.geometry().right() < w.speak_button.x()
+    assert w.speak_button.geometry().right() < w.needs_button.x()
+    assert w.needs_button.geometry().right() < w.pause_button.x()
     w.show_page(w.needs_page)
-    assert w.speak_button.isHidden()
+    assert w.speak_button.isHidden() and w.needs_button.isHidden()
+
+
+def test_number_row_sits_above_the_letters(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    one, q = button(w.keyboard_page, ("key", "1")), button(w.keyboard_page, ("key", "Q"))
+    assert one.x() == q.x() and one.geometry().bottom() < q.y()
+    for key in [("key", "2"), ("key", "0")]:
+        look_at(w, source, button(w.keyboard_page, key))
+        dwell(w, clock, app, 3.2)
+        source.point = None
+        dwell(w, clock, app, 1.2)
+    assert w.typed == "20"
+
+
+def test_yes_and_no_speak_at_once_and_keep_the_typed_text(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HEL"
+    look_at(w, source, button(w.keyboard_page, "no"))
+    dwell(w, clock, app, 3.2)
+    assert speaker.spoken == [("ไม่ใช่", "th")]
+    assert w.bar.english == "No" and w.typed == "HEL"
+    source.point = None
+    dwell(w, clock, app, 1.2)
+    look_at(w, source, button(w.keyboard_page, "yes"))
+    dwell(w, clock, app, 3.2)
+    assert speaker.spoken[-1] == ("ใช่", "th")
+
+
+def test_keyboard_layout_columns_and_word_row(setup):
+    w = setup[0]()
+    page = w.keyboard_page
+    yes, no = button(page, "yes"), button(page, "no")
+    delete, clear = button(page, "delete"), button(page, "clear")
+    q, p = button(page, ("key", "Q")), button(page, ("key", "P"))
+    assert yes.geometry().right() < q.x() and no.x() == yes.x()
+    assert delete.x() > p.geometry().right() and clear.x() == delete.x()
+    assert delete.y() < clear.y()
+    assert delete.height() > 2 * p.height()  # far bigger than one key
+    words = [b for b in page.buttons if isinstance(b.key, tuple) and b.key[0] == "word"]
+    assert len(words) == 6 and len({b.y() for b in words}) == 1

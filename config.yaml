@@ -24,7 +24,7 @@ display:
   show_gaze_dot: true      # toggle at runtime with Ctrl+G
   # The tracker is least accurate near the screen edges, worst at the bottom corners next to it.
   side_margin_px: 120      # keep buttons this far from the left and right edges (0 to 248)
-  bottom_margin_px: 100    # and this far from the bottom edge (0 to 114; more would shrink keys below 110 px)
+  bottom_margin_px: 100    # and this far from the bottom edge (0 to 222; more would shrink keys below 110 px)
   snap_px: 40              # gaze in a gap or just past the edge still counts for the nearest button this close (0 = off)
 
 language:
