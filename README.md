@@ -140,6 +140,12 @@ Manage Voices, and add **Kanya** (Thai).
 The first time Speak is used, the translation model downloads from Hugging Face
 (about 2.5 GB) and is cached after that, so the first run needs internet.
 
+If a translation takes longer than `translation.timeout_s` (8 s by default), the app gives up
+and speaks the English instead, with a warning under the message. The app also fixes how
+NLLB spells ำ (it writes "น้ำ" as น้ + ํ + า), which the Kanya voice could not read.
+For better (but slower) translations, set `translation.model` to
+`facebook/nllb-200-distilled-1.3B` (about 5.5 GB download).
+
 ### If the app says "No Tobii eye tracker found"
 
 Run the checker in Terminal (with `conda activate commu-aid`):
