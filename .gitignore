@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# The Mac app recipe is ours, not a generated file
+!packaging/mac/commu_aid.spec
