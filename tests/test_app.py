@@ -286,6 +286,22 @@ def test_empty_suggestion_cannot_be_chosen(setup, app):
     assert w.typed == ""
 
 
+def test_clear_empties_the_text_box(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    for key in [("key", "H"), ("key", "I")]:
+        look_at(w, source, button(w.keyboard_page, key))
+        dwell(w, clock, app, 3.2)
+        source.point = None
+        dwell(w, clock, app, 1.2)
+    assert w.bar.english == "HI"
+    look_at(w, source, button(w.keyboard_page, "clear"))
+    dwell(w, clock, app, 3.2)
+    assert w.typed == ""
+    assert w.bar.english == ""
+
+
 def test_keyboard_targets_stay_large(setup):
     w = setup[0]()
     for b in w.keyboard_page.buttons:
