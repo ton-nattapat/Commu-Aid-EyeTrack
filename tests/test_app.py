@@ -1,5 +1,8 @@
 """Drive the real window with a scripted gaze source and a fake clock (no tracker, no audio)."""
 
+import threading
+import time
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -168,6 +171,37 @@ def test_translation_failure_speaks_english(setup, app):
             break
     assert speaker.spoken == [("Water please", "en")]
     assert w.bar.note_is_warning
+
+
+class HangingTranslator:
+    """Never answers until released, like a model stuck on a sentence."""
+
+    enabled = True
+
+    def __init__(self):
+        self.release = threading.Event()
+
+    def translate(self, text):
+        self.release.wait(5)
+        return f"TH:{text}"
+
+
+def test_stuck_translation_times_out_and_speaks_english(setup, app):
+    make, clock, source, speaker, _ = setup
+    translator = HangingTranslator()
+    w = make(translator)
+    w.show_page(w.keyboard_page)
+    w.typed = "water please"
+    w._on_speak()
+    assert w.bar.note == "Translating..." and speaker.spoken == []
+    w._on_translation_timeout(w._request_id, "Water please")  # what the backstop timer calls
+    assert speaker.spoken == [("Water please", "en")]
+    assert w.bar.note_is_warning
+    translator.release.set()  # the late answer must not be spoken as well
+    for _ in range(50):
+        app.processEvents()
+        time.sleep(0.01)
+    assert speaker.spoken == [("Water please", "en")]
 
 
 def test_page_switch_does_not_bounce_back(setup, app):

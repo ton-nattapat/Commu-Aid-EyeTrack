@@ -62,6 +62,7 @@ class TranslationConfig:
     model: str = "facebook/nllb-200-distilled-600M"
     source_code: str = "eng_Latn"
     target_code: str = "tha_Thai"
+    timeout_s: float = 8.0  # give up and speak English if a translation takes longer than this
 
 
 @dataclass

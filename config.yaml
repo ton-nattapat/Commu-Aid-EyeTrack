@@ -34,9 +34,10 @@ language:
 
 translation:
   engine: nllb             # nllb (offline, Meta NLLB-200) or none
-  model: facebook/nllb-200-distilled-600M
+  model: facebook/nllb-200-distilled-600M   # or facebook/nllb-200-distilled-1.3B: better, slower, 5.5 GB
   source_code: eng_Latn
   target_code: tha_Thai
+  timeout_s: 8             # seconds; past this the app gives up and speaks the English instead
 
 speech:
   engine: auto             # auto (macOS: say, others: pyttsx3), say, pyttsx3, none
