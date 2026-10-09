@@ -129,6 +129,9 @@ def main(argv=None) -> int:
         window.show()
     else:
         window.showFullScreen()
+    # Started from Terminal, macOS can leave the keyboard with Terminal; take it so caregiver keys work.
+    window.raise_()
+    window.activateWindow()
     return app.exec()
 
 

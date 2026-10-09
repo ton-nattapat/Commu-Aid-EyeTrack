@@ -566,3 +566,15 @@ def test_caregiver_keys_ignored_on_rest_screen_and_settings_and_with_ctrl(setup,
     press(w, Qt.Key_C, Qt.ControlModifier)
     assert w.typed == ""
     assert w.page is w.needs_page
+
+
+def test_mac_keys_type_letters_even_with_the_thai_keyboard_selected(setup, app, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    monkeypatch.setattr(main_window, "IS_MAC", True)
+    w = setup[0]()
+    # Thai Kedmanee: the H key gives "้" and the 1 key gives "ๅ"; Qt reports those, not Key_H / Key_1.
+    for native, thai in ((0x04, "้"), (0x22, "ร"), (0x12, "ๅ")):
+        w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, ord(thai), Qt.NoModifier, 0, native, 0, thai))
+    assert w.typed == "HI1"
