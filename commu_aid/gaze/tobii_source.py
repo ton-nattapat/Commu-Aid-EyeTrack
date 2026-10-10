@@ -73,7 +73,8 @@ class TobiiGazeSource(GazeSource):
                     "a hub or monitor port often is not), then unplug and replug it.\n"
                     "2. Open Tobii Pro Eye Tracker Manager. If the Spark is not listed, press + to install its driver, "
                     "or install the Spark runtime from connect.tobii.com/s/spark-downloads.\n"
-                    "3. Run python -m commu_aid.check_tracker in Terminal for details."
+                    "3. For details, run python -m commu_aid.check_tracker in Terminal (in the Mac app, "
+                    "click Show Details below)."
                 )
             eyetracker = trackers[0]
         self.eyetracker = eyetracker

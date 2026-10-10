@@ -1,0 +1,2 @@
+# Building the Mac app and installer (packaging/mac/build_mac.sh)
+pyinstaller>=6.6

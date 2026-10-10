@@ -16,7 +16,8 @@ editing `config.yaml` by hand.
   `fixation`, and the hint says so when another filter is set.
 - A hand-tuned radius between levels (say 110 px) is kept on Save unless the level is changed.
 - Save rebuilds the filter at once, so a change needs no restart.
-- Cancel and Save moved up beside the title so all 11 Needs rows still fit at 1920x1080.
+- Cancel, Save and the Edge correction switch sit beside the title so all 11 Needs rows still fit
+  at 1920x1080.
 
 The other filter numbers (`confirm_samples`, `hold_s`, the one_euro and average settings) stay in
 `config.yaml` only.

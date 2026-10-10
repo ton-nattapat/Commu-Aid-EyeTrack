@@ -1,4 +1,7 @@
-"""Caregiver Settings page (F3): dwell time, gaze steadiness and the Needs tiles, saved to config.yaml."""
+"""Caregiver Settings page (F3): dwell time, gaze steadiness, edge correction and the Needs tiles.
+
+Everything is saved to config.yaml.
+"""
 
 from __future__ import annotations
 
@@ -47,6 +50,7 @@ QPushButton { font-size: 28px; font-weight: bold; padding: 14px 40px;
               background: #24324a; color: #f4f6f8; border: 2px solid #3a4652; border-radius: 16px; }
 QPushButton:hover { border-color: #f2c94c; }
 QPushButton#dwellStep { font-size: 56px; padding: 0; border: 3px solid #f2c94c; border-radius: 20px; }
+QPushButton#edgeToggle:checked { background: #3d3a1e; border-color: #f2c94c; }
 QPushButton#dwellStep:disabled { color: #5c6875; border-color: #3a4652; }
 QSlider::groove:horizontal { height: 20px; background: #3a4652; border-radius: 10px; }
 QSlider::sub-page:horizontal { background: #f2c94c; border-radius: 10px; }
@@ -57,6 +61,11 @@ QSlider::handle:horizontal { width: 44px; height: 44px; margin: -18px 0; border-
 SLIDER_HANDLE = 56  # px, QSlider::handle width plus its border above
 STEP_BUTTON = 110  # theme.MIN_TARGET
 LABEL_W = 300  # row labels share one width so the - / + buttons line up
+
+
+def seconds_text(seconds: float) -> str:
+    """1.0, 1.25, 1.5: two decimals only for the quarter steps."""
+    return f"{seconds:.2f}" if round(seconds * 100) % 10 else f"{seconds:.1f}"
 
 
 def _steps(seconds: float) -> int:
@@ -80,7 +89,7 @@ class SliderTicks(QWidget):
         for v in range(lo, hi + 1):
             x = SLIDER_HANDLE / 2 + span * (v - lo) / max(hi - lo, 1)
             p.setPen(theme.HOVER if v == self.slider.value() else theme.TEXT_QUIET)
-            p.drawText(int(x) - 60, 0, 120, self.height(), Qt.AlignCenter, f"{v * DWELL_STEP_S:.1f}")
+            p.drawText(int(x) - 60, 0, 120, self.height(), Qt.AlignCenter, seconds_text(v * DWELL_STEP_S))
 
 
 class SettingsPage(QWidget):
@@ -98,12 +107,19 @@ class SettingsPage(QWidget):
         layout.setContentsMargins(theme.MARGIN, 16, theme.MARGIN, 16)
         layout.setSpacing(12)
 
-        # Cancel and Save share the title row, leaving room for all 11 Needs rows below the controls.
+        # The buttons share the title row, leaving room for all 11 Needs rows below the controls.
         title_row = QHBoxLayout()
         title = QLabel("Caregiver settings")
         title.setFont(theme.font(56, bold=True))
         title_row.addWidget(title)
         title_row.addStretch(1)
+        # Takes the gaze error measured at the calibration dots back out of the live gaze. Every
+        # calibration learns it, so switching it on or off works at once, without recalibrating.
+        self.edge_toggle = QPushButton()
+        self.edge_toggle.setObjectName("edgeToggle")
+        self.edge_toggle.setCheckable(True)
+        self.edge_toggle.toggled.connect(self._show_edge)
+        title_row.addWidget(self.edge_toggle)
         cancel = QPushButton("Cancel (Esc)")
         cancel.clicked.connect(self.cancel)
         save = QPushButton("Save")
@@ -141,7 +157,7 @@ class SettingsPage(QWidget):
         layout.addLayout(dwell_row)
 
         # Wobble grace: how long gaze may slip onto a neighbouring button and come back without
-        # losing progress. Same 0.5 s steps as the dwell slider; three values need no slider.
+        # losing progress. Same 0.25 s steps as the dwell slider; five values need no slider.
         wobble_row = QHBoxLayout()
         wobble_row.setSpacing(theme.GAP)
         wobble_label = QLabel("Wobble grace")
@@ -216,6 +232,8 @@ class SettingsPage(QWidget):
         self._set_wobble(round(clamp_wobble_grace(self.cfg.dwell.wobble_grace_s) / DWELL_STEP_S))
         self.loaded_steady_level = steadiness_level(self.cfg.gaze_filter.fixation_radius_px)
         self._set_steadiness(self.loaded_steady_level)
+        self.edge_toggle.setChecked(self.cfg.calibration.edge_correction)
+        self._show_edge(self.edge_toggle.isChecked())
         for row in range(NEEDS_TILE_COUNT):
             tile = self.cfg.needs[row] if row < len(self.cfg.needs) else NeedTile("", "")
             for col, value in enumerate((tile.icon, tile.label, tile.thai)):
@@ -233,6 +251,7 @@ class SettingsPage(QWidget):
             # survives a Save. Steadiness is the fixation filter's setting, so it switches to that.
             self.cfg.gaze_filter.method = "fixation"
             self.cfg.gaze_filter.fixation_radius_px = STEADINESS_RADII_PX[self.steady_level]
+        self.cfg.calibration.edge_correction = self.edge_toggle.isChecked()
         needs = []
         for row in range(NEEDS_TILE_COUNT):
             icon, label, thai = (self._text(row, c) for c in range(3))
@@ -259,7 +278,7 @@ class SettingsPage(QWidget):
         top = round(WOBBLE_GRACE_MAX_S / DWELL_STEP_S)
         self.wobble_steps = max(0, min(top, steps))
         seconds = self.wobble_steps * DWELL_STEP_S
-        self.wobble_value.setText(f"{seconds:.1f} s" if seconds else "Off")
+        self.wobble_value.setText(f"{seconds_text(seconds)} s" if seconds else "Off")
         self.wobble_less.setEnabled(self.wobble_steps > 0)
         self.wobble_more.setEnabled(self.wobble_steps < top)
 
@@ -277,10 +296,13 @@ class SettingsPage(QWidget):
         self.steady_hint.setText(hint)
 
     def _show_dwell(self, steps: int) -> None:
-        self.dwell_value.setText(f"{steps * DWELL_STEP_S:.1f} s")
+        self.dwell_value.setText(f"{seconds_text(steps * DWELL_STEP_S)} s")
         self.dwell_less.setEnabled(steps > self.dwell_slider.minimum())
         self.dwell_more.setEnabled(steps < self.dwell_slider.maximum())
         self.dwell_ticks.update()
+
+    def _show_edge(self, on: bool) -> None:
+        self.edge_toggle.setText(f"Edge correction: {'On' if on else 'Off'}")
 
     def cancel(self) -> None:
         self.on_closed()

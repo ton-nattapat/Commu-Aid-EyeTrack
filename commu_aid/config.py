@@ -11,7 +11,7 @@ import yaml
 NEEDS_TILE_COUNT = 11
 DWELL_MIN_S = 1.0
 DWELL_MAX_S = 3.0
-DWELL_STEP_S = 0.5  # the Settings slider and its - / + buttons move in these steps
+DWELL_STEP_S = 0.25  # the Settings slider and its - / + buttons move in these steps
 WOBBLE_GRACE_MAX_S = 1.0
 
 
@@ -54,6 +54,7 @@ class DisplayConfig:
     side_margin_px: int = 120  # buttons keep this far from the left and right screen edges
     bottom_margin_px: int = 100  # and this far from the bottom edge, nearest the tracker
     snap_px: int = 40  # gaze in a gap or just past the edge counts for the nearest button this close
+    edge_snap_px: int = 150  # gaze outside the whole layout (the edge margins) counts for the nearest button this close
 
 
 @dataclass
@@ -86,6 +87,7 @@ class CalibrationConfig:
     auto_accept_max_error_px: float = 0
     redo_point_px: float = 150  # recollect a calibration point once when its error is above this (0 = never)
     show_live_gaze: bool = True  # draw the gaze live on the calibration screen (G toggles it there)
+    edge_correction: bool = True  # take the gaze error measured at the validation dots back out of live gaze
 
     @property
     def saved_path(self) -> Path:
