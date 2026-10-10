@@ -2,7 +2,7 @@
 
 A full-screen communication aid for a person with ALS, driven by a Tobii Pro Spark eye tracker.
 The patient looks at a button for a set time (3 seconds by default, adjustable from 1 to 3 s
-in 0.5 s steps) to choose it. The app shows the English text and speaks it in Thai.
+in 0.25 s steps) to choose it. The app shows the English text and speaks it in Thai.
 
 - **Page 1, Needs:** 11 large tiles (Thirsty, Hungry, Pee, Pain, Too hot, Too cold, Turn me,
   Suction, Yes, No, Call caregiver) and a Keyboard tile. Each tile speaks a fixed Thai phrase.
@@ -27,7 +27,7 @@ in 0.5 s steps) to choose it. The app shows the English text and speaks it in Th
 - **Pause (top right)** rests the screen while the patient watches TV or talks: every button
   turns off except one large **Resume** button at the top centre, which needs a longer look
   (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
-- **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.5 s steps, with a large
+- **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.25 s steps, with a large
   slider and big − / + buttons), the wobble grace, switch the edge correction on or off, and edit
   the Needs tiles.
   A small line at the bottom of the Needs and Keyboard pages reminds the nurse of F2 (recalibrate)
@@ -434,7 +434,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Edge correction ─▶ Gaze filter ─
 | `commu_aid/ui/gaze_dot.py` | Gaze dot overlay (Ctrl+G) |
 | `commu_aid/ui/pause_screen.py` | Rest screen with the long-dwell Resume button |
 | `commu_aid/ui/calibration.py` | Start-up calibration: position check with face outline, live gaze, result plots |
-| `commu_aid/ui/settings.py` | Caregiver settings (dwell slider in 0.5 s steps, Needs tiles) |
+| `commu_aid/ui/settings.py` | Caregiver settings (dwell slider in 0.25 s steps, wobble grace, Needs tiles) |
 | `commu_aid/predict.py` | Offline word prediction (10,000 common words, care words, learning) |
 | `commu_aid/data/` | Word lists for prediction (`english_words.txt`, `care_words.txt`) |
 | `commu_aid/speech.py` | Offline text-to-speech (`say` on macOS, pyttsx3 elsewhere) |
@@ -456,7 +456,7 @@ python -m pytest        # in the activated commu-aid environment (pytest comes w
 The tests cover the dwell engine with scripted gaze streams, the gaze filters, the simulated
 eye tracker (jitter, offset, drift, blinks, dropouts, repeatable seeds), word prediction, config loading and saving, and the whole window driven by a scripted gaze source (choosing a need,
 the alarm, typing and speaking, word prediction, translation failure, page switching, settings
-and the 0.5 s dwell steps, edge margins and snapping, the edge correction, pause and resume),
+and the 0.25 s dwell steps, edge margins and snapping, the edge correction, pause and resume),
 button targeting and layout, the edge correction (on simulated edge error it cuts the median miss
 at the edge buttons from about 115 to 30 px), the tracker checker, and the calibration screen
 (collecting bad points again, spotting a Display Setup problem, keeping every gaze sample per

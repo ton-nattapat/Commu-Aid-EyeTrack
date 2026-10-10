@@ -199,28 +199,30 @@ def test_settings_hint_sits_below_the_buttons_and_hides_under_settings(setup):
     assert w.settings.geometry().contains(hint.geometry())
 
 
-def test_settings_slider_is_one_to_three_seconds_in_half_second_steps(setup, tmp_path):
+def test_settings_slider_is_one_to_three_seconds_in_quarter_second_steps(setup, tmp_path):
     make = setup[0]
     w = make()
     w.cfg.path = tmp_path / "config.yaml"
     w.open_settings()
-    assert (w.settings.dwell_slider.minimum(), w.settings.dwell_slider.maximum()) == (2, 6)
-    w.settings.dwell_slider.setValue(2)
+    assert (w.settings.dwell_slider.minimum(), w.settings.dwell_slider.maximum()) == (4, 12)
+    w.settings.dwell_slider.setValue(4)
     assert w.settings.dwell_value.text() == "1.0 s"
     assert not w.settings.dwell_less.isEnabled()
+    w.settings.dwell_more.click()
+    assert w.settings.dwell_value.text() == "1.25 s"
     w.settings.dwell_more.click()
     assert w.settings.dwell_value.text() == "1.5 s"
     w.settings.save()
     assert w.dwell.dwell_time_s == 1.5
 
 
-def test_settings_snaps_an_odd_dwell_time_to_the_nearest_half_second(setup, tmp_path):
+def test_settings_snaps_an_odd_dwell_time_to_the_nearest_quarter_second(setup, tmp_path):
     make = setup[0]
     w = make()
     w.cfg.path = tmp_path / "config.yaml"
     w.cfg.dwell.dwell_time_s = 2.3
     w.open_settings()
-    assert w.settings.dwell_value.text() == "2.5 s"
+    assert w.settings.dwell_value.text() == "2.25 s"
     w.settings.dwell_less.click()
     w.settings.save()
     assert w.dwell.dwell_time_s == 2.0
@@ -233,17 +235,19 @@ def test_settings_wobble_grace_is_off_to_one_second(setup, tmp_path):
     w.open_settings()
     assert w.settings.wobble_value.text() == "0.5 s"
     w.settings.wobble_more.click()
+    assert w.settings.wobble_value.text() == "0.75 s"
+    w.settings.wobble_more.click()
     assert w.settings.wobble_value.text() == "1.0 s"
     assert not w.settings.wobble_more.isEnabled()
-    w.settings.wobble_less.click()
-    w.settings.wobble_less.click()
+    for _ in range(4):
+        w.settings.wobble_less.click()
     assert w.settings.wobble_value.text() == "Off"
     assert not w.settings.wobble_less.isEnabled()
     w.settings.wobble_more.click()
-    w.settings.wobble_more.click()
+    assert w.settings.wobble_value.text() == "0.25 s"
     w.settings.save()
-    assert w.dwell.wobble_grace_s == 1.0
-    assert "wobble_grace_s: 1.0" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    assert w.dwell.wobble_grace_s == 0.25
+    assert "wobble_grace_s: 0.25" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
 
 
 def test_wobble_onto_neighbour_key_keeps_progress(setup, app):
@@ -266,7 +270,7 @@ def test_settings_save_changes_dwell_and_tiles(setup, app, tmp_path):
     w = make()
     w.cfg.path = tmp_path / "config.yaml"
     w.open_settings()
-    w.settings.dwell_slider.setValue(4)
+    w.settings.dwell_slider.setValue(8)
     w.settings.table.item(0, 1).setText("Water")
     w.settings.save()
     assert w.dwell.dwell_time_s == 2.0

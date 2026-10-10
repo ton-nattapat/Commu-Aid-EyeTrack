@@ -55,6 +55,11 @@ SLIDER_HANDLE = 56  # px, QSlider::handle width plus its border above
 STEP_BUTTON = 110  # theme.MIN_TARGET
 
 
+def seconds_text(seconds: float) -> str:
+    """1.0, 1.25, 1.5: two decimals only for the quarter steps."""
+    return f"{seconds:.2f}" if round(seconds * 100) % 10 else f"{seconds:.1f}"
+
+
 def _steps(seconds: float) -> int:
     """Slider position (number of DWELL_STEP_S steps) nearest to the given dwell time."""
     return round(clamp_dwell(seconds) / DWELL_STEP_S)
@@ -76,7 +81,7 @@ class SliderTicks(QWidget):
         for v in range(lo, hi + 1):
             x = SLIDER_HANDLE / 2 + span * (v - lo) / max(hi - lo, 1)
             p.setPen(theme.HOVER if v == self.slider.value() else theme.TEXT_QUIET)
-            p.drawText(int(x) - 60, 0, 120, self.height(), Qt.AlignCenter, f"{v * DWELL_STEP_S:.1f}")
+            p.drawText(int(x) - 60, 0, 120, self.height(), Qt.AlignCenter, seconds_text(v * DWELL_STEP_S))
 
 
 class SettingsPage(QWidget):
@@ -126,7 +131,7 @@ class SettingsPage(QWidget):
         layout.addLayout(dwell_row)
 
         # Wobble grace: how long gaze may slip onto a neighbouring button and come back without
-        # losing progress. Same 0.5 s steps as the dwell slider; three values need no slider.
+        # losing progress. Same 0.25 s steps as the dwell slider; five values need no slider.
         wobble_row = QHBoxLayout()
         wobble_row.setSpacing(theme.GAP)
         wobble_label = QLabel("Wobble grace")
@@ -227,12 +232,12 @@ class SettingsPage(QWidget):
         top = round(WOBBLE_GRACE_MAX_S / DWELL_STEP_S)
         self.wobble_steps = max(0, min(top, steps))
         seconds = self.wobble_steps * DWELL_STEP_S
-        self.wobble_value.setText(f"{seconds:.1f} s" if seconds else "Off")
+        self.wobble_value.setText(f"{seconds_text(seconds)} s" if seconds else "Off")
         self.wobble_less.setEnabled(self.wobble_steps > 0)
         self.wobble_more.setEnabled(self.wobble_steps < top)
 
     def _show_dwell(self, steps: int) -> None:
-        self.dwell_value.setText(f"{steps * DWELL_STEP_S:.1f} s")
+        self.dwell_value.setText(f"{seconds_text(steps * DWELL_STEP_S)} s")
         self.dwell_less.setEnabled(steps > self.dwell_slider.minimum())
         self.dwell_more.setEnabled(steps < self.dwell_slider.maximum())
         self.dwell_ticks.update()
