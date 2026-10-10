@@ -26,6 +26,7 @@ display:
   side_margin_px: 120      # keep buttons this far from the left and right edges (0 to 248)
   bottom_margin_px: 100    # and this far from the bottom edge (0 to 222; more would shrink keys below 110 px)
   snap_px: 40              # gaze in a gap or just past the edge still counts for the nearest button this close (0 = off)
+  edge_snap_px: 150        # gaze in the margin outside all the buttons counts for the nearest one this close (0 = use snap_px)
 
 language:
   screen: en               # language of the buttons and keyboard
@@ -50,6 +51,7 @@ calibration:
   auto_accept_max_error_px: 0      # 0 = caregiver must press Accept; e.g. 60 = accept automatically when every point is within 60 px
   redo_point_px: 150               # a calibration point with more error than this is shown again once (0 = never)
   show_live_gaze: true             # draw the gaze live on the calibration screen; G toggles it there
+  edge_correction: true            # learn the gaze error at the 9 validation dots and take it out of the live gaze
 
 # The Pause button (top right) rests the screen: every button turns off except one large Resume
 # button at the top centre. F4 pauses and resumes from the keyboard.

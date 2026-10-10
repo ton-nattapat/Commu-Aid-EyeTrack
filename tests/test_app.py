@@ -94,8 +94,12 @@ def setup(app, monkeypatch, tmp_path):
 
 def look_at(window, source, button):
     """Point the scripted gaze at the centre of a button."""
-    centre = button.mapTo(window.canvas, button.rect().center())
-    view_pt = window.mapFromScene(QPointF(centre))
+    look_at_canvas(window, source, QPointF(button.mapTo(window.canvas, button.rect().center())))
+
+
+def look_at_canvas(window, source, point):
+    """Point the scripted gaze at a spot on the 1920x1080 canvas."""
+    view_pt = window.mapFromScene(point)
     global_pt = window.mapToGlobal(view_pt)
     geo = window.screen().geometry()
     source.point = ((global_pt.x() - geo.x()) / geo.width(), (global_pt.y() - geo.y()) / geo.height())
@@ -188,7 +192,7 @@ def test_settings_hint_sits_below_the_buttons_and_hides_under_settings(setup):
     make = setup[0]
     w = make()
     hint = w.settings_hint
-    assert hint.isVisible() and "F3" in hint.text()
+    assert hint.isVisible() and "F3" in hint.text() and "F2 recalibrate" in hint.text()
     lowest = max(b.mapTo(w.canvas, b.rect().bottomLeft()).y() for b in w.page.buttons)
     assert hint.geometry().top() > lowest
     w.open_settings()
@@ -513,6 +517,91 @@ def test_keyboard_layout_columns_and_word_row(setup):
     assert len(words) == 6 and len({b.y() for b in words}) == 1
 
 
+def test_gaze_in_the_side_margin_still_selects_the_edge_key(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    delete = button(w.keyboard_page, "delete")
+    edge = delete.mapTo(w.canvas, QPoint(delete.width() + 100, delete.height() // 2))
+    look_at_canvas(w, source, QPointF(edge))  # 100 px right of the key, in the margin
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "H"
+
+
+def test_edge_correction_moves_the_gaze_back_onto_the_key(setup, app):
+    from commu_aid.gaze.correction import EdgeCorrection
+
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    space = button(w.keyboard_page, "space")
+    look_at(w, source, space)
+    x, y = source.point
+    # The gaze lands a whole key above Space, on the letter row.
+    look_at_canvas(w, source, QPointF(space.mapTo(w.canvas, space.rect().center())) - QPointF(0, 146))
+    miss = source.point[1] - y
+    dwell(w, clock, app, 3.2)
+    assert w.typed.startswith("HI") and w.typed[2:].isalpha()  # without correction: a letter
+
+    w.typed = "HI"
+    grid = [(gx, gy) for gy in (0.12, 0.5, 0.88) for gx in (0.08, 0.5, 0.92)]
+    w.correction = EdgeCorrection.from_misses([((gx, gy), (gx, gy + miss)) for gx, gy in grid])
+    w.dwell.reset()
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "HI "
+
+
+class CalibratingGaze(ScriptedGaze):
+    def save_calibration(self, path):
+        path.write_bytes(b"calibration")
+
+    def load_calibration(self, path):
+        return path.exists()
+
+
+class FinishedCalibration:
+    def __init__(self, correction):
+        self.correction = correction
+
+    def hide(self):
+        pass
+
+    def deleteLater(self):
+        pass
+
+
+def test_edge_correction_is_saved_with_the_calibration_and_loaded_on_skip(setup, app, tmp_path):
+    from commu_aid.gaze.correction import EdgeCorrection
+
+    make, clock, _, _, _ = setup
+    w = make()
+    w.source = CalibratingGaze(clock)
+    w.cfg.calibration.saved_file = str(tmp_path / "calibration.bin")
+    grid = [(gx, gy) for gy in (0.12, 0.5, 0.88) for gx in (0.08, 0.5, 0.92)]
+    correction = EdgeCorrection.from_misses([((gx, gy), (gx + 0.01, gy)) for gx, gy in grid])
+    w.calibration = FinishedCalibration(correction)
+    w._on_calibration_finished("accepted")
+    assert (tmp_path / "calibration.edge.json").exists()
+
+    w.correction = None
+    w.calibration = FinishedCalibration(None)
+    w._on_calibration_finished("skipped")
+    assert w.correction == correction
+
+
+def test_glance_past_the_edge_does_not_wake_the_rest_screen(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.pause()
+    resume = w.pause_screen.resume_button
+    above = resume.mapTo(w.canvas, QPoint(resume.width() // 2, -100))
+    look_at_canvas(w, source, QPointF(above))  # above Resume, outside every button
+    dwell(w, clock, app, w.cfg.pause.resume_dwell_s + 0.5)
+    assert w.paused
+
+
 def press(w, key, mods=None, text=""):
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QKeyEvent
@@ -578,3 +667,40 @@ def test_mac_keys_type_letters_even_with_the_thai_keyboard_selected(setup, app, 
     for native, thai in ((0x04, "้"), (0x22, "ร"), (0x12, "ๅ")):
         w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, ord(thai), Qt.NoModifier, 0, native, 0, thai))
     assert w.typed == "HI1"
+
+
+def test_settings_turn_edge_correction_off_and_on_without_recalibrating(setup, app, tmp_path):
+    from commu_aid.gaze.correction import EdgeCorrection
+
+    make, clock, source, _, _ = setup
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    space = button(w.keyboard_page, "space")
+    look_at(w, source, space)
+    y = source.point[1]
+    # The gaze lands a whole key above Space; the correction learned at calibration undoes that.
+    look_at_canvas(w, source, QPointF(space.mapTo(w.canvas, space.rect().center())) - QPointF(0, 146))
+    miss = source.point[1] - y
+    grid = [(gx, gy) for gy in (0.12, 0.5, 0.88) for gx in (0.08, 0.5, 0.92)]
+    w.correction = EdgeCorrection.from_misses([((gx, gy), (gx, gy + miss)) for gx, gy in grid])
+
+    w.open_settings()
+    assert w.settings.edge_toggle.isChecked() and w.settings.edge_toggle.text() == "Edge correction: On"
+    w.settings.edge_toggle.click()
+    assert w.settings.edge_toggle.text() == "Edge correction: Off"
+    w.settings.save()
+    assert w.cfg.calibration.edge_correction is False
+    assert "edge_correction: false" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    w.dwell.reset()
+    dwell(w, clock, app, 3.2)
+    assert w.typed[2:].isalpha()  # off: the raw gaze picks the letter above
+
+    w.typed = "HI"
+    w.open_settings()
+    w.settings.edge_toggle.click()
+    w.settings.save()
+    w.dwell.reset()
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "HI "  # on again: Space, with no new calibration

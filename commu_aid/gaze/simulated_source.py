@@ -38,6 +38,7 @@ class SimulationProfile:
     dropout_s: Tuple[float, float] = (0.4, 1.2)
     spike_chance: float = 0.005  # chance per sample of one wild reading
     spike_px: float = 150.0
+    edge_px: float = 0.0  # extra miss that grows towards the sides and the bottom edge, this big at the edge middles
 
 
 PROFILES: Dict[str, SimulationProfile] = {
@@ -54,6 +55,8 @@ PROFILES: Dict[str, SimulationProfile] = {
         blinks_per_min=22.0, blink_s=(0.15, 0.5), dropouts_per_min=3.0, dropout_s=(0.5, 2.0),
         spike_chance=0.02, spike_px=250.0,
     ),
+    # Typical, plus the error that grows towards the screen edges seen with the Spark at the bedside.
+    "edges": SimulationProfile(edge_px=200.0),
 }
 
 
@@ -106,13 +109,20 @@ class GazeSimulator:
         for i in range(2):
             self._noise[i] = a * self._noise[i] + self.rng.gauss(0.0, scale)
 
-        x = fx + p.offset_px[0] + self._drift[0] + self._noise[0]
-        y = fy + p.offset_px[1] + self._drift[1] + self._noise[1]
+        ex, ey = self.edge_error(fx, fy)
+        x = fx + p.offset_px[0] + ex + self._drift[0] + self._noise[0]
+        y = fy + p.offset_px[1] + ey + self._drift[1] + self._noise[1]
         if self.rng.random() < p.spike_chance:
             angle = self.rng.uniform(0.0, 2.0 * math.pi)
             x += p.spike_px * math.cos(angle)
             y += p.spike_px * math.sin(angle)
         return GazeSample(t, x / self.w, y / self.h, True)
+
+    def edge_error(self, x_px: float, y_px: float) -> Tuple[float, float]:
+        """The fixed miss at a point: none at the centre, growing outwards at the sides and downwards at the
+        bottom (where the eyelids cover the eyes from the tracker), edge_px at the left, right and bottom middles."""
+        nx, ny = (x_px / self.w - 0.5) * 2, (y_px / self.h - 0.5) * 2
+        return self.p.edge_px * nx * abs(nx), self.p.edge_px * max(ny, 0.0) ** 2
 
     def _wait(self, per_min: float) -> float:
         return self.rng.expovariate(per_min / 60.0) if per_min > 0 else math.inf

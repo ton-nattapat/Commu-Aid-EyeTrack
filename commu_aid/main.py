@@ -4,7 +4,7 @@
     python -m commu_aid --mouse          # no tracker: the mouse pointer stands in for gaze
     python -m commu_aid --mouse --calibration-demo   # rehearse the calibration screen with the mouse
     python -m commu_aid --simulate       # mouse plus realistic gaze jitter, offset, blinks and dropouts
-    python -m commu_aid --simulate hard  # mild, typical (default) or hard
+    python -m commu_aid --simulate hard  # mild, typical (default), hard or edges
     python -m commu_aid --check-tracker  # same as python -m commu_aid.check_tracker
 """
 
@@ -45,9 +45,9 @@ def parse_args(argv=None):
     ap.add_argument("--config", type=Path, help="settings file (default: config.yaml; the Mac app uses ~/.commu_aid/config.yaml)")
     ap.add_argument("--mouse", action="store_true", help="use the mouse instead of the eye tracker")
     ap.add_argument(
-        "--simulate", nargs="?", const="typical", choices=("mild", "typical", "hard"), metavar="LEVEL",
+        "--simulate", nargs="?", const="typical", choices=("mild", "typical", "hard", "edges"), metavar="LEVEL",
         help="simulated eye tracker: the mouse with gaze jitter, offset, blinks and dropouts "
-        "(LEVEL: mild, typical or hard; default typical). Implies --mouse",
+        "(LEVEL: mild, typical, hard or edges; default typical). Implies --mouse",
     )
     ap.add_argument("--sim-seed", type=int, help="with --simulate: repeat the same random jitter and blinks")
     ap.add_argument("--calibration-demo", action="store_true", help="with --mouse: show a pretend calibration")

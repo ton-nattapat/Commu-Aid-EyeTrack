@@ -14,19 +14,23 @@ in 0.5 s steps) to choose it. The app shows the English text and speaks it in Th
   learns from every message the patient speaks.
   Speak and Needs sit at the top beside Pause. Speak translates the typed English to Thai offline
   (Meta NLLB-200) and speaks the Thai.
-- **Calibration** runs every time the app starts: position check, 5-point calibration (a point
-  with bad data is shown once more), validation, then Accept or Retry. The position check draws a face
+- **Calibration** runs every time the app starts: position check, 9-point calibration (corners,
+  edge middles and centre; a point with bad data is shown once more), 9-point validation out to
+  the edge buttons, then Accept or Retry. The position check draws a face
   outline that follows the patient's head (bigger when closer, tilted with the eyes) over a dashed
   outline of where it should be. The live gaze is drawn
   throughout, and the result plots every gaze sample collected at each point, per eye.
 - **Edges:** buttons keep clear of the left, right and bottom screen edges, where the tracker is
-  least accurate, and gaze that lands just past a button still counts for it.
+  least accurate, and gaze that lands just past a button still counts for it. Gaze in the margin
+  outside all the buttons counts for the nearest edge button. The miss measured at each
+  validation dot becomes an **edge correction** that is taken out of the live gaze.
 - **Pause (top right)** rests the screen while the patient watches TV or talks: every button
   turns off except one large **Resume** button at the top centre, which needs a longer look
   (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
 - **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.5 s steps, with a large
-  slider and big − / + buttons) and the Needs tiles.
-  A small line at the bottom of the Needs and Keyboard pages reminds the nurse which key opens it.
+  slider and big − / + buttons), switch the edge correction on or off, and edit the Needs tiles.
+  A small line at the bottom of the Needs and Keyboard pages reminds the nurse of F2 (recalibrate)
+  and F3 (Settings), with fn on a Mac.
 
 | Needs | Keyboard |
 | --- | --- |
@@ -267,10 +271,28 @@ through these in order, recalibrating (F2) after each change:
    line shows which way it missed. Lines all pointing the same way mean an offset (position);
    lines all pointing outward or inward mean Display Setup.
 
-The layout already helps: `side_margin_px` and `bottom_margin_px` in `config.yaml` keep buttons
-away from the edges (the keys stay at least 110 px), and `snap_px` lets gaze in a gap or just
-past the edge count for the nearest button. Raising the margins further makes the keys smaller,
-so fix Display Setup and position first.
+What is left after that, the app corrects itself. The 9 validation dots reach the outermost
+buttons (Pause at the top, the edge keys at the sides and bottom). Where the gaze landed at each
+dot is turned into a smooth shift that the main screen takes out of every gaze sample
+(on by default; each shift is capped at 250 px). The caregiver can switch it off and on with the
+**Edge correction** button on the Settings page (F3); every calibration learns it either way, so
+switching takes effect at once without recalibrating (`calibration.edge_correction` in `config.yaml`). It works best
+when the patient's head stays still after calibrating, because the miss then stays the same.
+The result screen says "Edge correction on" and how far it moves the gaze, and the live gaze dot
+there is already corrected: ask the patient to look at a few edge dots again and check the dot
+now lands on them before pressing Accept. The correction is saved beside the calibration
+(`~/.commu_aid/calibration.edge.json`) and used again when the calibration is skipped.
+
+The layout helps too: `side_margin_px` and `bottom_margin_px` in `config.yaml` keep buttons
+away from the edges (the keys stay at least 110 px), `snap_px` lets gaze in a gap or just
+past the edge count for the nearest button, and `edge_snap_px` (150 px) lets gaze anywhere in the
+margin outside all the buttons count for the nearest edge button (not on the rest screen, so a
+glance away does not wake it). Raising the margins further makes the keys smaller, so fix
+Display Setup and position first.
+
+To try the edge correction without the tracker, `python -m commu_aid --simulate edges
+--calibration-demo --windowed` adds an error that grows towards the sides and bottom; follow the
+validation dots with the mouse.
 
 ## Run
 
@@ -300,6 +322,7 @@ cooldown settings before the tracker is available.
 python -m commu_aid --simulate --windowed          # typical bedside conditions
 python -m commu_aid --simulate mild --windowed     # close to the tracker's specification
 python -m commu_aid --simulate hard --windowed     # tired patient, glasses, poor light
+python -m commu_aid --simulate edges --windowed    # typical, plus error growing towards the sides and bottom
 python -m commu_aid --simulate --sim-seed 1        # repeat the same jitter and blinks every run
 python -m commu_aid --simulate --calibration-demo  # with the pretend calibration screen
 ```
@@ -312,7 +335,7 @@ Caregiver keys:
 | Key | Action |
 | --- | --- |
 | F2 | Calibrate again |
-| F3 | Settings (dwell time, Needs tiles) |
+| F3 | Settings (dwell time, edge correction, Needs tiles) |
 | F4 | Pause or resume |
 | Ctrl+G (Cmd+G on a Mac) | Show or hide the gaze dot |
 | F11 | Full screen on or off |
@@ -343,8 +366,8 @@ Everything is in [`config.yaml`](config.yaml):
 - `gaze_filter`: how the gaze point is steadied (see [If the gaze point is shaky](#if-the-gaze-point-is-shaky)).
 - `display`: edge margins and snapping (see [If gaze misses near the screen edges](#if-gaze-misses-near-the-screen-edges)).
 - `calibration`: for example `auto_accept_max_error_px` to accept a good calibration without
-  pressing Enter, `redo_point_px` to set when a calibration point is collected again, and
-  `show_live_gaze`.
+  pressing Enter, `redo_point_px` to set when a calibration point is collected again,
+  `show_live_gaze`, and `edge_correction` (also on the Settings page).
 - `pause`: `resume_dwell_s`, how long the patient must look at Resume to leave the rest screen.
 - `needs`, `translation`, `speech`: the Needs tiles and their Thai phrases, translation, voices.
 The Thai phrases should be checked by a Thai speaker; they use the male form (ผม ... ครับ).
@@ -381,10 +404,10 @@ keeps its `config.yaml` and `app.log` there.
 ## How it works
 
 ```text
-Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Targets ─▶ Dwell engine ─▶ UI pages ─▶ Speech
- (tobii_research    (or mouse,    (combine eyes,  (which    (1-3 s timer,   (Needs,
-  60 Hz)             simulated)    fixation        button,   grace,          Keyboard,
-                                   filter)         snapping) cooldown)       Pause)
+Tobii Pro Spark ─▶ Gaze source ─▶ Edge correction ─▶ Gaze filter ─▶ Targets ─▶ Dwell engine ─▶ UI pages ─▶ Speech
+ (tobii_research    (or mouse,    (from the 9        (combine eyes,  (which    (1-3 s timer,   (Needs,
+  60 Hz)             simulated)    validation dots)   fixation        button,   grace,          Keyboard,
+                                                      filter)         snapping) cooldown)       Pause)
 ```
 
 | File | Role |
@@ -396,6 +419,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Targets ─▶ Dwel
 | `commu_aid/gaze/mouse_source.py` | Mouse as fake gaze for development |
 | `commu_aid/gaze/simulated_source.py` | Simulated tracker: mouse plus jitter, offset, blinks, dropouts |
 | `commu_aid/gaze/filters.py` | Combine both eyes; gaze filters (fixation, One Euro, moving average) |
+| `commu_aid/gaze/correction.py` | Edge correction learned from the validation dots |
 | `commu_aid/dwell.py` | Dwell state machine (no UI code, unit tested) |
 | `commu_aid/targets.py` | Which button the gaze is on, with snapping to the nearest one |
 | `commu_aid/ui/main_window.py` | Full-screen window, gaze loop, page switching |
@@ -427,6 +451,8 @@ python -m pytest        # in the activated commu-aid environment (pytest comes w
 The tests cover the dwell engine with scripted gaze streams, the gaze filters, the simulated
 eye tracker (jitter, offset, drift, blinks, dropouts, repeatable seeds), word prediction, config loading and saving, and the whole window driven by a scripted gaze source (choosing a need,
 the alarm, typing and speaking, word prediction, translation failure, page switching, settings
-and the 0.5 s dwell steps, edge margins and snapping, pause and resume), button targeting and
-layout, the tracker checker, and the calibration screen (collecting bad points again, spotting a
-Display Setup problem, keeping every gaze sample per eye, the live gaze).
+and the 0.5 s dwell steps, edge margins and snapping, the edge correction, pause and resume),
+button targeting and layout, the edge correction (on simulated edge error it cuts the median miss
+at the edge buttons from about 115 to 30 px), the tracker checker, and the calibration screen
+(collecting bad points again, spotting a Display Setup problem, keeping every gaze sample per
+eye, the live gaze, learning the edge correction).
