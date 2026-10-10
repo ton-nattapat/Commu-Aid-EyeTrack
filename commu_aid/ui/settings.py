@@ -19,7 +19,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..config import DWELL_MAX_S, DWELL_MIN_S, DWELL_STEP_S, NEEDS_TILE_COUNT, AppConfig, NeedTile, clamp_dwell
+from ..config import (
+    DWELL_MAX_S,
+    DWELL_MIN_S,
+    DWELL_STEP_S,
+    NEEDS_TILE_COUNT,
+    WOBBLE_GRACE_MAX_S,
+    AppConfig,
+    NeedTile,
+    clamp_dwell,
+    clamp_wobble_grace,
+)
 from . import theme
 
 STYLE = """
@@ -45,6 +55,11 @@ SLIDER_HANDLE = 56  # px, QSlider::handle width plus its border above
 STEP_BUTTON = 110  # theme.MIN_TARGET
 
 
+def seconds_text(seconds: float) -> str:
+    """1.0, 1.25, 1.5: two decimals only for the quarter steps."""
+    return f"{seconds:.2f}" if round(seconds * 100) % 10 else f"{seconds:.1f}"
+
+
 def _steps(seconds: float) -> int:
     """Slider position (number of DWELL_STEP_S steps) nearest to the given dwell time."""
     return round(clamp_dwell(seconds) / DWELL_STEP_S)
@@ -66,7 +81,7 @@ class SliderTicks(QWidget):
         for v in range(lo, hi + 1):
             x = SLIDER_HANDLE / 2 + span * (v - lo) / max(hi - lo, 1)
             p.setPen(theme.HOVER if v == self.slider.value() else theme.TEXT_QUIET)
-            p.drawText(int(x) - 60, 0, 120, self.height(), Qt.AlignCenter, f"{v * DWELL_STEP_S:.1f}")
+            p.drawText(int(x) - 60, 0, 120, self.height(), Qt.AlignCenter, seconds_text(v * DWELL_STEP_S))
 
 
 class SettingsPage(QWidget):
@@ -115,6 +130,30 @@ class SettingsPage(QWidget):
         dwell_row.addWidget(self.dwell_value)
         layout.addLayout(dwell_row)
 
+        # Wobble grace: how long gaze may slip onto a neighbouring button and come back without
+        # losing progress. Same 0.25 s steps as the dwell slider; five values need no slider.
+        wobble_row = QHBoxLayout()
+        wobble_row.setSpacing(theme.GAP)
+        wobble_label = QLabel("Wobble grace")
+        wobble_label.setFont(theme.font(32, bold=True))
+        self.wobble_steps = 0
+        self.wobble_less = self._button("\u2212", lambda: self._set_wobble(self.wobble_steps - 1))
+        self.wobble_more = self._button("+", lambda: self._set_wobble(self.wobble_steps + 1))
+        self.wobble_value = QLabel()
+        self.wobble_value.setFont(theme.font(40, bold=True))
+        self.wobble_value.setMinimumWidth(160)
+        self.wobble_value.setAlignment(Qt.AlignCenter)
+        wobble_hint = QLabel("Gaze may slip onto the next button this long and come back without starting over")
+        wobble_hint.setFont(theme.font(24))
+        wobble_hint.setStyleSheet("color: #9aa5b1;")
+        wobble_hint.setWordWrap(True)
+        wobble_row.addWidget(wobble_label)
+        wobble_row.addWidget(self.wobble_less)
+        wobble_row.addWidget(self.wobble_value)
+        wobble_row.addWidget(self.wobble_more)
+        wobble_row.addWidget(wobble_hint, 1)
+        layout.addLayout(wobble_row)
+
         tiles_label = QLabel("Needs tiles (the 12th tile always opens the keyboard)")
         tiles_label.setFont(theme.font(32, bold=True))
         layout.addWidget(tiles_label)
@@ -128,7 +167,7 @@ class SettingsPage(QWidget):
         header.setSectionResizeMode(3, QHeaderView.Fixed)
         self.table.setColumnWidth(0, 120)
         self.table.setColumnWidth(3, 220)
-        self.table.verticalHeader().setDefaultSectionSize(54)
+        self.table.verticalHeader().setDefaultSectionSize(46)  # all 11 rows fit under the two dwell rows
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
@@ -151,6 +190,7 @@ class SettingsPage(QWidget):
     def load(self) -> None:
         self.dwell_slider.setValue(_steps(self.cfg.dwell.dwell_time_s))
         self._show_dwell(self.dwell_slider.value())
+        self._set_wobble(round(clamp_wobble_grace(self.cfg.dwell.wobble_grace_s) / DWELL_STEP_S))
         self.edge_toggle.setChecked(self.cfg.calibration.edge_correction)
         self._show_edge(self.edge_toggle.isChecked())
         for row in range(NEEDS_TILE_COUNT):
@@ -164,6 +204,7 @@ class SettingsPage(QWidget):
 
     def save(self) -> None:
         self.cfg.dwell.dwell_time_s = clamp_dwell(self.dwell_slider.value() * DWELL_STEP_S)
+        self.cfg.dwell.wobble_grace_s = clamp_wobble_grace(self.wobble_steps * DWELL_STEP_S)
         self.cfg.calibration.edge_correction = self.edge_toggle.isChecked()
         needs = []
         for row in range(NEEDS_TILE_COUNT):
@@ -178,14 +219,25 @@ class SettingsPage(QWidget):
         self.on_closed()
 
     def _step_button(self, text: str, direction: int) -> QPushButton:
+        return self._button(text, lambda: self.dwell_slider.setValue(self.dwell_slider.value() + direction))
+
+    def _button(self, text: str, on_click) -> QPushButton:
         button = QPushButton(text)
         button.setObjectName("dwellStep")
         button.setFixedSize(STEP_BUTTON, STEP_BUTTON)
-        button.clicked.connect(lambda: self.dwell_slider.setValue(self.dwell_slider.value() + direction))
+        button.clicked.connect(on_click)
         return button
 
+    def _set_wobble(self, steps: int) -> None:
+        top = round(WOBBLE_GRACE_MAX_S / DWELL_STEP_S)
+        self.wobble_steps = max(0, min(top, steps))
+        seconds = self.wobble_steps * DWELL_STEP_S
+        self.wobble_value.setText(f"{seconds_text(seconds)} s" if seconds else "Off")
+        self.wobble_less.setEnabled(self.wobble_steps > 0)
+        self.wobble_more.setEnabled(self.wobble_steps < top)
+
     def _show_dwell(self, steps: int) -> None:
-        self.dwell_value.setText(f"{steps * DWELL_STEP_S:.1f} s")
+        self.dwell_value.setText(f"{seconds_text(steps * DWELL_STEP_S)} s")
         self.dwell_less.setEnabled(steps > self.dwell_slider.minimum())
         self.dwell_more.setEnabled(steps < self.dwell_slider.maximum())
         self.dwell_ticks.update()
