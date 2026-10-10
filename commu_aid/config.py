@@ -12,6 +12,7 @@ NEEDS_TILE_COUNT = 11
 DWELL_MIN_S = 1.0
 DWELL_MAX_S = 3.0
 DWELL_STEP_S = 0.5  # the Settings slider and its - / + buttons move in these steps
+WOBBLE_GRACE_MAX_S = 1.0
 
 
 @dataclass
@@ -19,6 +20,7 @@ class DwellConfig:
     dwell_time_s: float = 3.0
     blink_grace_s: float = 0.3
     cooldown_s: float = 1.0
+    wobble_grace_s: float = 0.5  # gaze may wobble onto another button this long without losing progress
 
 
 GAZE_FILTER_METHODS = ("fixation", "one_euro", "average")
@@ -157,6 +159,7 @@ def load_config(path: Path | str) -> AppConfig:
         path=path,
     )
     cfg.dwell.dwell_time_s = clamp_dwell(cfg.dwell.dwell_time_s)
+    cfg.dwell.wobble_grace_s = clamp_wobble_grace(cfg.dwell.wobble_grace_s)
     return cfg
 
 
@@ -174,3 +177,7 @@ def _gaze_filter(raw) -> GazeFilterConfig:
 
 def clamp_dwell(seconds: float) -> float:
     return max(DWELL_MIN_S, min(DWELL_MAX_S, float(seconds)))
+
+
+def clamp_wobble_grace(seconds: float) -> float:
+    return max(0.0, min(WOBBLE_GRACE_MAX_S, float(seconds)))
