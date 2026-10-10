@@ -128,7 +128,9 @@ class MainWindow(QGraphicsView):
         self.keyboard_page.hide()
 
         # A quiet hint for the nurse in the strip below the buttons; Settings, Pause and calibration cover it.
-        self.settings_hint = QLabel("Caregiver: press F3 for Settings  (fn + F3 on a Mac)", self.canvas)
+        self.settings_hint = QLabel(
+            "Caregiver: F2 recalibrate    F3 Settings    (hold fn on a Mac: fn + F2, fn + F3)", self.canvas
+        )
         self.settings_hint.setFont(theme.font(22))
         self.settings_hint.setStyleSheet(f"color: {theme.TEXT_QUIET.name()}; background: transparent;")
         self.settings_hint.setAlignment(Qt.AlignCenter)
@@ -209,7 +211,7 @@ class MainWindow(QGraphicsView):
         for raw in self.source.poll():
             if self.calibration is not None:
                 self.calibration.feed(raw)  # unfiltered and uncorrected: the calibration screen measures every sample
-            elif self.correction is not None:
+            elif self.correction is not None and self.cfg.calibration.edge_correction:
                 raw = self.correction.apply(raw)
             self.last_sample = self.smoother.add(raw)
 
@@ -454,7 +456,7 @@ class MainWindow(QGraphicsView):
             log.exception("Could not load saved calibration")
             loaded = False
         self.correction = None
-        if loaded and self.cfg.calibration.edge_correction:
+        if loaded:
             self.correction = EdgeCorrection.load(correction_path(self.cfg.calibration.saved_path))
         if loaded:
             self._show_status("Using the saved calibration", note="F2 to recalibrate")
@@ -487,7 +489,10 @@ class MainWindow(QGraphicsView):
     def _apply_settings(self) -> None:
         self.dwell.dwell_time_s = self.cfg.dwell.dwell_time_s
         self.needs_page.set_needs(self.cfg.needs)
-        self._show_status("Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s")
+        edge = "on" if self.cfg.calibration.edge_correction else "off"
+        self._show_status(
+            "Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s, edge correction {edge}"
+        )
 
     # Caregiver keys
 

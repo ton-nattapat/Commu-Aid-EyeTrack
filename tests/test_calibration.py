@@ -249,4 +249,8 @@ def test_edge_correction_can_be_turned_off(app):
         screen.stage_started = time.monotonic() - 5
         screen._tick()
     finish_validation(screen, lambda x, y: [GazeSample(time.monotonic(), x, y, True)])
-    assert screen.stage == "result" and screen.correction is None and screen.note == ""
+    # Still learned, so Settings can turn it on later; but not shown or applied here.
+    assert screen.stage == "result" and screen.correction is not None
+    assert screen.note.startswith("Edge correction off")
+    screen.feed(GazeSample(time.monotonic(), 0.5, 0.95, True))
+    assert screen._live[-1][1].y() == pytest.approx(0.95 * 1080)

@@ -197,7 +197,7 @@ class CalibrationScreen(QWidget):
         if not sample.valid:
             return
         measured = sample
-        if self.stage == "result" and self.correction is not None:
+        if self.stage == "result" and self.correction is not None and self.edge_correction:
             sample = self.correction.apply(sample)  # show what the main screen will see
         pt = self.map_to_canvas(sample.x, sample.y)
         eyes = eye_samples(sample, self.map_to_canvas)
@@ -353,12 +353,17 @@ class CalibrationScreen(QWidget):
         if pattern:
             where = "outside" if pattern == "outward" else "inside"
             self.hint = f"Gaze lands {where} every dot: {DISPLAY_SETUP_HINT}"
-        if self.edge_correction and valid:
+        if valid:
+            # Learned even when switched off, so turning it on in Settings later needs no recalibration.
             self.correction = EdgeCorrection.from_misses(self._misses, self.screen_px)
-            self.note = (
-                f"Edge correction on (moves the gaze up to {self.correction.largest_shift_px(self.screen_px):.0f} px). "
-                "Live gaze is corrected: look at the dots to check."
-            )
+            shift = self.correction.largest_shift_px(self.screen_px)
+            if self.edge_correction:
+                self.note = (
+                    f"Edge correction on (moves the gaze up to {shift:.0f} px). "
+                    "Live gaze is corrected: look at the dots to check."
+                )
+            else:
+                self.note = f"Edge correction off (it would move the gaze up to {shift:.0f} px). Turn it on in Settings (F3)."
         self._show_buttons("accept", "retry", "skip")
         if self.auto_accept_px > 0 and len(valid) == len(errors) and max(valid) <= self.auto_accept_px:
             self.message += ". Accepting automatically."

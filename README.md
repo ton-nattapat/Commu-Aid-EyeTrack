@@ -28,8 +28,9 @@ in 0.5 s steps) to choose it. The app shows the English text and speaks it in Th
   turns off except one large **Resume** button at the top centre, which needs a longer look
   (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
 - **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.5 s steps, with a large
-  slider and big − / + buttons) and the Needs tiles.
-  A small line at the bottom of the Needs and Keyboard pages reminds the nurse which key opens it.
+  slider and big − / + buttons), switch the edge correction on or off, and edit the Needs tiles.
+  A small line at the bottom of the Needs and Keyboard pages reminds the nurse of F2 (recalibrate)
+  and F3 (Settings), with fn on a Mac.
 
 | Needs | Keyboard |
 | --- | --- |
@@ -273,7 +274,9 @@ through these in order, recalibrating (F2) after each change:
 What is left after that, the app corrects itself. The 9 validation dots reach the outermost
 buttons (Pause at the top, the edge keys at the sides and bottom). Where the gaze landed at each
 dot is turned into a smooth shift that the main screen takes out of every gaze sample
-(`calibration.edge_correction`, on by default; each shift is capped at 250 px). It works best
+(on by default; each shift is capped at 250 px). The caregiver can switch it off and on with the
+**Edge correction** button on the Settings page (F3); every calibration learns it either way, so
+switching takes effect at once without recalibrating (`calibration.edge_correction` in `config.yaml`). It works best
 when the patient's head stays still after calibrating, because the miss then stays the same.
 The result screen says "Edge correction on" and how far it moves the gaze, and the live gaze dot
 there is already corrected: ask the patient to look at a few edge dots again and check the dot
@@ -332,7 +335,7 @@ Caregiver keys:
 | Key | Action |
 | --- | --- |
 | F2 | Calibrate again |
-| F3 | Settings (dwell time, Needs tiles) |
+| F3 | Settings (dwell time, edge correction, Needs tiles) |
 | F4 | Pause or resume |
 | Ctrl+G (Cmd+G on a Mac) | Show or hide the gaze dot |
 | F11 | Full screen on or off |
@@ -364,7 +367,7 @@ Everything is in [`config.yaml`](config.yaml):
 - `display`: edge margins and snapping (see [If gaze misses near the screen edges](#if-gaze-misses-near-the-screen-edges)).
 - `calibration`: for example `auto_accept_max_error_px` to accept a good calibration without
   pressing Enter, `redo_point_px` to set when a calibration point is collected again,
-  `show_live_gaze`, and `edge_correction`.
+  `show_live_gaze`, and `edge_correction` (also on the Settings page).
 - `pause`: `resume_dwell_s`, how long the patient must look at Resume to leave the rest screen.
 - `needs`, `translation`, `speech`: the Needs tiles and their Thai phrases, translation, voices.
 The Thai phrases should be checked by a Thai speaker; they use the male form (ผม ... ครับ).
