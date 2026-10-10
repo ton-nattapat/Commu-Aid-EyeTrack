@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import sys
 import threading
 import time
 from pathlib import Path
@@ -41,6 +42,19 @@ from .settings import SettingsPage
 log = logging.getLogger(__name__)
 
 DATA_DIR = Path("~/.commu_aid").expanduser()
+IS_MAC = sys.platform == "darwin"
+# macOS key codes (kVK_ANSI_*) say which physical key was pressed, whatever input source is on.
+# With the Thai keyboard selected, Qt reports the H key as a Thai letter, so match on these first.
+MAC_KEYS = {
+    0x00: "A", 0x0B: "B", 0x08: "C", 0x02: "D", 0x0E: "E", 0x03: "F", 0x05: "G", 0x04: "H",
+    0x22: "I", 0x26: "J", 0x28: "K", 0x25: "L", 0x2E: "M", 0x2D: "N", 0x1F: "O", 0x23: "P",
+    0x0C: "Q", 0x0F: "R", 0x01: "S", 0x11: "T", 0x20: "U", 0x09: "V", 0x0D: "W", 0x07: "X",
+    0x10: "Y", 0x06: "Z",
+    0x1D: "0", 0x12: "1", 0x13: "2", 0x14: "3", 0x15: "4", 0x17: "5", 0x16: "6", 0x1A: "7",
+    0x1C: "8", 0x19: "9",
+    0x52: "0", 0x53: "1", 0x54: "2", 0x55: "3", 0x56: "4", 0x57: "5", 0x58: "6", 0x59: "7",
+    0x5B: "8", 0x5C: "9",  # keypad
+}
 SETTINGS_HINT_MIN_H = 30  # with a smaller bottom margin there is no room for the hint below the buttons
 
 
@@ -476,6 +490,39 @@ class MainWindow(QGraphicsView):
         self._show_status("Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s")
 
     # Caregiver keys
+
+    def keyPressEvent(self, event) -> None:
+        """A caregiver can type on the Mac keyboard to fix what noisy gaze typed: letters, numbers,
+        Space, Backspace (Delete), Shift+Backspace (Clear) and Enter (Speak). Calibration, Settings
+        and the rest screen keep their own keys."""
+        if self.calibration is not None or self.settings.isVisible() or self.paused:
+            super().keyPressEvent(event)
+            return
+        action = self._caregiver_key(event)
+        if action is None:
+            super().keyPressEvent(event)
+            return
+        self.show_page(self.keyboard_page)
+        action()
+
+    def _caregiver_key(self, event):
+        mods = event.modifiers() & ~(Qt.KeypadModifier | Qt.ShiftModifier)
+        if mods:
+            return None  # Ctrl, Alt and Cmd combinations are shortcuts, not typing
+        key = event.key()
+        if key == Qt.Key_Backspace:
+            return self._on_clear if event.modifiers() & Qt.ShiftModifier else self._on_delete
+        if key in (Qt.Key_Return, Qt.Key_Enter):
+            return self._on_speak
+        if key == Qt.Key_Space:
+            return lambda: self._on_letter(" ")
+        ch = MAC_KEYS.get(event.nativeVirtualKey()) if IS_MAC else None
+        if ch is None and (Qt.Key_A <= key <= Qt.Key_Z or Qt.Key_0 <= key <= Qt.Key_9):
+            ch = chr(key)  # Qt key codes for A-Z and 0-9 are their ASCII codes
+        if ch is not None:
+            return lambda: self._on_letter(ch)
+        log.debug("Key not used for typing: key=%#x native=%#x text=%r", key, event.nativeVirtualKey(), event.text())
+        return None
 
     def _toggle_gaze_dot(self) -> None:
         self.show_gaze_dot = not self.show_gaze_dot

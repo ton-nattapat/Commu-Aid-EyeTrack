@@ -50,6 +50,7 @@ class Translator:
                 raise TranslationError("Translation needs: pip install -r requirements-translate.txt") from exc
             self._tokenizer = AutoTokenizer.from_pretrained(self.cfg.model, src_lang=self.cfg.source_code)
             self._model = AutoModelForSeq2SeqLM.from_pretrained(self.cfg.model)
+            log.info("Translation model %s ready", self.cfg.model)
 
     def translate(self, text: str) -> str:
         """Blocking; call from a worker thread. Raises TranslationError on any failure."""
