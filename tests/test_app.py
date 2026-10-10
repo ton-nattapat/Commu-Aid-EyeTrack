@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from commu_aid.config import load_config  # noqa: E402
 from commu_aid.gaze.source import GazeSample, GazeSource  # noqa: E402
 from commu_aid.translate import TranslationError  # noqa: E402
-from commu_aid.ui import main_window  # noqa: E402
+from commu_aid.ui import main_window, theme  # noqa: E402
 from tests.test_config import ROOT  # noqa: E402
 
 
@@ -94,8 +94,12 @@ def setup(app, monkeypatch, tmp_path):
 
 def look_at(window, source, button):
     """Point the scripted gaze at the centre of a button."""
-    centre = button.mapTo(window.canvas, button.rect().center())
-    view_pt = window.mapFromScene(QPointF(centre))
+    look_at_canvas(window, source, QPointF(button.mapTo(window.canvas, button.rect().center())))
+
+
+def look_at_canvas(window, source, point):
+    """Point the scripted gaze at a spot on the 1920x1080 canvas."""
+    view_pt = window.mapFromScene(point)
     global_pt = window.mapToGlobal(view_pt)
     geo = window.screen().geometry()
     source.point = ((global_pt.x() - geo.x()) / geo.width(), (global_pt.y() - geo.y()) / geo.height())
@@ -176,17 +180,19 @@ def test_page_switch_does_not_bounce_back(setup, app):
     look_at(w, source, button(w.needs_page, "nav"))
     dwell(w, clock, app, 3.2)
     assert w.page is w.keyboard_page
-    # The Needs button sits in the same corner; a continued stare must not switch straight back.
-    look_at(w, source, button(w.keyboard_page, "nav"))
+    # A continued stare at the same spot must not switch straight back.
     dwell(w, clock, app, 5.0)
     assert w.page is w.keyboard_page
+    look_at(w, source, w.needs_button)
+    dwell(w, clock, app, 3.2)
+    assert w.page is w.needs_page
 
 
 def test_settings_hint_sits_below_the_buttons_and_hides_under_settings(setup):
     make = setup[0]
     w = make()
     hint = w.settings_hint
-    assert hint.isVisible() and "F3" in hint.text()
+    assert hint.isVisible() and "F3" in hint.text() and "F2 recalibrate" in hint.text()
     lowest = max(b.mapTo(w.canvas, b.rect().bottomLeft()).y() for b in w.page.buttons)
     assert hint.geometry().top() > lowest
     w.open_settings()
@@ -337,6 +343,77 @@ def test_clear_empties_the_text_box(setup, app):
     assert w.bar.english == ""
 
 
+def type_keys(w, clock, source, app, letters):
+    for ch in letters:
+        look_at(w, source, button(w.keyboard_page, ("key", ch)))
+        dwell(w, clock, app, 3.2)
+        source.point = None
+        dwell(w, clock, app, 1.2)
+
+
+def test_resume_keeps_the_typed_text_in_the_box(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    type_keys(w, clock, source, app, "HI")
+    w.pause()
+    w.resume()
+    assert w.typed == "HI"
+    assert w.bar.typing and w.bar.english == "HI"  # what the box shows is what the next key adds to
+    assert "Welcome back" in w.bar.note
+    type_keys(w, clock, source, app, "M")
+    assert w.bar.english == "HIM"
+
+
+def test_clear_after_resume_empties_the_box_for_good(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    type_keys(w, clock, source, app, "HI")
+    w.pause()
+    w.resume()
+    look_at(w, source, button(w.keyboard_page, "clear"))
+    dwell(w, clock, app, 3.2)
+    source.point = None
+    dwell(w, clock, app, 1.2)
+    type_keys(w, clock, source, app, "A")
+    assert w.typed == "A" and w.bar.english == "A"
+
+
+def test_status_messages_on_the_keyboard_page_keep_the_typed_text(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "WATER"
+    w._show_typed()
+    for status in (w._apply_settings, w._use_saved_calibration):
+        status()
+        assert w.bar.typing and w.bar.english == "WATER", status
+        assert w.bar.note
+
+
+def test_resume_on_the_needs_page_shows_welcome_back(setup):
+    w = setup[0]()
+    w.pause()
+    w.resume()
+    assert not w.bar.typing and w.bar.english == "Welcome back"
+
+
+def test_typing_during_translation_is_not_hidden_by_the_result(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    w._on_speak()
+    w._on_letter("X")  # the patient starts the next word before the translation is back
+    for _ in range(50):
+        app.processEvents()
+        if speaker.spoken:
+            break
+    assert speaker.spoken == [("TH:Hi", "th")]
+    assert w.bar.typing and w.bar.english == "HIX"
+
+
 def test_keyboard_targets_stay_large(setup):
     w = setup[0]()
     for b in w.keyboard_page.buttons:
@@ -346,10 +423,15 @@ def test_keyboard_targets_stay_large(setup):
 def test_buttons_stay_clear_of_the_screen_edges(setup):
     w = setup[0]()
     d = w.cfg.display
-    buttons = [*w.needs_page.buttons, *w.keyboard_page.buttons, w.pause_button, w.speak_button, w.pause_screen.resume_button]
+    columns = {"yes", "no", "delete", "clear"}  # big enough to sit nearer the side edges than the keys
+    buttons = [
+        *w.needs_page.buttons, *w.keyboard_page.buttons,
+        w.pause_button, w.speak_button, w.needs_button, w.pause_screen.resume_button,
+    ]
     for b in buttons:
         pos = b.mapTo(w.canvas, QPoint(0, 0))
-        assert pos.x() >= d.side_margin_px and pos.x() + b.width() <= 1920 - d.side_margin_px, b.key
+        side = min(d.side_margin_px, theme.KEYBOARD_SIDE_MARGIN) if b.key in columns else d.side_margin_px
+        assert pos.x() >= side and pos.x() + b.width() <= 1920 - side, b.key
         assert pos.y() + b.height() <= 1080 - d.bottom_margin_px, b.key
 
 
@@ -426,14 +508,248 @@ def test_caregiver_key_toggles_pause(setup):
     assert not w.paused
 
 
-def test_speak_sits_beside_pause_on_the_keyboard_page_only(setup, app):
+def test_speak_and_needs_sit_beside_pause_on_the_keyboard_page_only(setup, app):
     make, clock, source, speaker, _ = setup
     w = make()
-    assert w.speak_button.isHidden()
+    assert w.speak_button.isHidden() and w.needs_button.isHidden()
     w.show_page(w.keyboard_page)
-    assert w.speak_button.isVisible()
-    assert w.speak_button.y() == w.pause_button.y()
-    assert w.speak_button.geometry().right() < w.pause_button.x()
+    assert w.speak_button.isVisible() and w.needs_button.isVisible()
+    assert w.speak_button.y() == w.needs_button.y() == w.pause_button.y()
     assert w.bar.geometry().right() < w.speak_button.x()
+    assert w.speak_button.geometry().right() < w.needs_button.x()
+    assert w.needs_button.geometry().right() < w.pause_button.x()
     w.show_page(w.needs_page)
-    assert w.speak_button.isHidden()
+    assert w.speak_button.isHidden() and w.needs_button.isHidden()
+
+
+def test_number_row_sits_above_the_letters(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    one, q = button(w.keyboard_page, ("key", "1")), button(w.keyboard_page, ("key", "Q"))
+    assert one.x() == q.x() and one.geometry().bottom() < q.y()
+    for key in [("key", "2"), ("key", "0")]:
+        look_at(w, source, button(w.keyboard_page, key))
+        dwell(w, clock, app, 3.2)
+        source.point = None
+        dwell(w, clock, app, 1.2)
+    assert w.typed == "20"
+
+
+def test_yes_and_no_speak_at_once_and_keep_the_typed_text(setup, app):
+    make, clock, source, speaker, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HEL"
+    look_at(w, source, button(w.keyboard_page, "no"))
+    dwell(w, clock, app, 3.2)
+    assert speaker.spoken == [("ไม่ใช่", "th")]
+    assert w.bar.english == "No" and w.typed == "HEL"
+    source.point = None
+    dwell(w, clock, app, 1.2)
+    look_at(w, source, button(w.keyboard_page, "yes"))
+    dwell(w, clock, app, 3.2)
+    assert speaker.spoken[-1] == ("ใช่", "th")
+
+
+def test_keyboard_layout_columns_and_word_row(setup):
+    w = setup[0]()
+    page = w.keyboard_page
+    yes, no = button(page, "yes"), button(page, "no")
+    delete, clear = button(page, "delete"), button(page, "clear")
+    q, p = button(page, ("key", "Q")), button(page, ("key", "P"))
+    assert yes.geometry().right() < q.x() and no.x() == yes.x()
+    assert delete.x() > p.geometry().right() and clear.x() == delete.x()
+    assert delete.y() < clear.y()
+    assert delete.height() > 2 * p.height()  # far bigger than one key
+    words = [b for b in page.buttons if isinstance(b.key, tuple) and b.key[0] == "word"]
+    assert len(words) == 6 and len({b.y() for b in words}) == 1
+
+
+def test_gaze_in_the_side_margin_still_selects_the_edge_key(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    delete = button(w.keyboard_page, "delete")
+    edge = delete.mapTo(w.canvas, QPoint(delete.width() + 100, delete.height() // 2))
+    look_at_canvas(w, source, QPointF(edge))  # 100 px right of the key, in the margin
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "H"
+
+
+def test_edge_correction_moves_the_gaze_back_onto_the_key(setup, app):
+    from commu_aid.gaze.correction import EdgeCorrection
+
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    space = button(w.keyboard_page, "space")
+    look_at(w, source, space)
+    x, y = source.point
+    # The gaze lands a whole key above Space, on the letter row.
+    look_at_canvas(w, source, QPointF(space.mapTo(w.canvas, space.rect().center())) - QPointF(0, 146))
+    miss = source.point[1] - y
+    dwell(w, clock, app, 3.2)
+    assert w.typed.startswith("HI") and w.typed[2:].isalpha()  # without correction: a letter
+
+    w.typed = "HI"
+    grid = [(gx, gy) for gy in (0.12, 0.5, 0.88) for gx in (0.08, 0.5, 0.92)]
+    w.correction = EdgeCorrection.from_misses([((gx, gy), (gx, gy + miss)) for gx, gy in grid])
+    w.dwell.reset()
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "HI "
+
+
+class CalibratingGaze(ScriptedGaze):
+    def save_calibration(self, path):
+        path.write_bytes(b"calibration")
+
+    def load_calibration(self, path):
+        return path.exists()
+
+
+class FinishedCalibration:
+    def __init__(self, correction):
+        self.correction = correction
+
+    def hide(self):
+        pass
+
+    def deleteLater(self):
+        pass
+
+
+def test_edge_correction_is_saved_with_the_calibration_and_loaded_on_skip(setup, app, tmp_path):
+    from commu_aid.gaze.correction import EdgeCorrection
+
+    make, clock, _, _, _ = setup
+    w = make()
+    w.source = CalibratingGaze(clock)
+    w.cfg.calibration.saved_file = str(tmp_path / "calibration.bin")
+    grid = [(gx, gy) for gy in (0.12, 0.5, 0.88) for gx in (0.08, 0.5, 0.92)]
+    correction = EdgeCorrection.from_misses([((gx, gy), (gx + 0.01, gy)) for gx, gy in grid])
+    w.calibration = FinishedCalibration(correction)
+    w._on_calibration_finished("accepted")
+    assert (tmp_path / "calibration.edge.json").exists()
+
+    w.correction = None
+    w.calibration = FinishedCalibration(None)
+    w._on_calibration_finished("skipped")
+    assert w.correction == correction
+
+
+def test_glance_past_the_edge_does_not_wake_the_rest_screen(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.pause()
+    resume = w.pause_screen.resume_button
+    above = resume.mapTo(w.canvas, QPoint(resume.width() // 2, -100))
+    look_at_canvas(w, source, QPointF(above))  # above Resume, outside every button
+    dwell(w, clock, app, w.cfg.pause.resume_dwell_s + 0.5)
+    assert w.paused
+
+
+def press(w, key, mods=None, text=""):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, key, mods or Qt.NoModifier, text))
+
+
+def test_caregiver_types_on_the_mac_keyboard(setup, app):
+    from PySide6.QtCore import Qt
+
+    make, _, _, speaker, _ = setup
+    w = make()
+    assert w.page is w.needs_page
+    for key, text in [(Qt.Key_H, "h"), (Qt.Key_I, "i"), (Qt.Key_Space, " "), (Qt.Key_2, "2")]:
+        press(w, key, text=text)
+    assert w.page is w.keyboard_page  # typing opens the keyboard page
+    assert w.typed == "HI 2" and w.bar.english == "HI 2"
+    press(w, Qt.Key_Backspace)
+    assert w.typed == "HI "
+    press(w, Qt.Key_7, Qt.KeypadModifier, "7")
+    assert w.typed == "HI 7"
+    press(w, Qt.Key_Backspace, Qt.ShiftModifier)
+    assert w.typed == "" and w.bar.english == ""
+
+
+def test_enter_speaks_what_the_caregiver_typed(setup, app):
+    from PySide6.QtCore import Qt
+
+    make, _, _, speaker, _ = setup
+    w = make()
+    for key in (Qt.Key_H, Qt.Key_I):
+        press(w, key)
+    press(w, Qt.Key_Return)
+    for _ in range(50):
+        app.processEvents()
+        if speaker.spoken:
+            break
+    assert speaker.spoken == [("TH:Hi", "th")]
+
+
+def test_caregiver_keys_ignored_on_rest_screen_and_settings_and_with_ctrl(setup, app):
+    from PySide6.QtCore import Qt
+
+    w = setup[0]()
+    w.pause()
+    press(w, Qt.Key_A)
+    w.resume()
+    w.open_settings()
+    press(w, Qt.Key_B)
+    w.close_settings()
+    press(w, Qt.Key_C, Qt.ControlModifier)
+    assert w.typed == ""
+    assert w.page is w.needs_page
+
+
+def test_mac_keys_type_letters_even_with_the_thai_keyboard_selected(setup, app, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    monkeypatch.setattr(main_window, "IS_MAC", True)
+    w = setup[0]()
+    # Thai Kedmanee: the H key gives "้" and the 1 key gives "ๅ"; Qt reports those, not Key_H / Key_1.
+    for native, thai in ((0x04, "้"), (0x22, "ร"), (0x12, "ๅ")):
+        w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, ord(thai), Qt.NoModifier, 0, native, 0, thai))
+    assert w.typed == "HI1"
+
+
+def test_settings_turn_edge_correction_off_and_on_without_recalibrating(setup, app, tmp_path):
+    from commu_aid.gaze.correction import EdgeCorrection
+
+    make, clock, source, _, _ = setup
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    space = button(w.keyboard_page, "space")
+    look_at(w, source, space)
+    y = source.point[1]
+    # The gaze lands a whole key above Space; the correction learned at calibration undoes that.
+    look_at_canvas(w, source, QPointF(space.mapTo(w.canvas, space.rect().center())) - QPointF(0, 146))
+    miss = source.point[1] - y
+    grid = [(gx, gy) for gy in (0.12, 0.5, 0.88) for gx in (0.08, 0.5, 0.92)]
+    w.correction = EdgeCorrection.from_misses([((gx, gy), (gx, gy + miss)) for gx, gy in grid])
+
+    w.open_settings()
+    assert w.settings.edge_toggle.isChecked() and w.settings.edge_toggle.text() == "Edge correction: On"
+    w.settings.edge_toggle.click()
+    assert w.settings.edge_toggle.text() == "Edge correction: Off"
+    w.settings.save()
+    assert w.cfg.calibration.edge_correction is False
+    assert "edge_correction: false" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    w.dwell.reset()
+    dwell(w, clock, app, 3.2)
+    assert w.typed[2:].isalpha()  # off: the raw gaze picks the letter above
+
+    w.typed = "HI"
+    w.open_settings()
+    w.settings.edge_toggle.click()
+    w.settings.save()
+    w.dwell.reset()
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "HI "  # on again: Space, with no new calibration

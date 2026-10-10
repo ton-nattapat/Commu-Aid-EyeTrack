@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import sys
 import threading
 import time
 from pathlib import Path
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QLabel, QWidget
 
 from ..config import AppConfig, NeedTile
 from ..dwell import DwellEngine
+from ..gaze.correction import EdgeCorrection, correction_path
 from ..gaze.filters import make_gaze_filter
 from ..gaze.source import GazeSample, GazeSource
 from ..predict import Predictor
@@ -40,7 +42,19 @@ from .settings import SettingsPage
 log = logging.getLogger(__name__)
 
 DATA_DIR = Path("~/.commu_aid").expanduser()
-PAUSE_W = 260
+IS_MAC = sys.platform == "darwin"
+# macOS key codes (kVK_ANSI_*) say which physical key was pressed, whatever input source is on.
+# With the Thai keyboard selected, Qt reports the H key as a Thai letter, so match on these first.
+MAC_KEYS = {
+    0x00: "A", 0x0B: "B", 0x08: "C", 0x02: "D", 0x0E: "E", 0x03: "F", 0x05: "G", 0x04: "H",
+    0x22: "I", 0x26: "J", 0x28: "K", 0x25: "L", 0x2E: "M", 0x2D: "N", 0x1F: "O", 0x23: "P",
+    0x0C: "Q", 0x0F: "R", 0x01: "S", 0x11: "T", 0x20: "U", 0x09: "V", 0x0D: "W", 0x07: "X",
+    0x10: "Y", 0x06: "Z",
+    0x1D: "0", 0x12: "1", 0x13: "2", 0x14: "3", 0x15: "4", 0x17: "5", 0x16: "6", 0x1A: "7",
+    0x1C: "8", 0x19: "9",
+    0x52: "0", 0x53: "1", 0x54: "2", 0x55: "3", 0x56: "4", 0x57: "5", 0x58: "6", 0x59: "7",
+    0x5B: "8", 0x5C: "9",  # keypad
+}
 SETTINGS_HINT_MIN_H = 30  # with a smaller bottom margin there is no room for the hint below the buttons
 
 
@@ -86,15 +100,14 @@ class MainWindow(QGraphicsView):
 
         area = theme.content_area(cfg.display.side_margin_px, cfg.display.bottom_margin_px)
         # Pause sits at the right end of the message bar row, lined up with the buttons below it.
-        pause_x = area[0] + area[2] - PAUSE_W
-        self.pause_button = DwellButton("pause", "Pause", self.pause, icon="⏸️", variant="nav", label_px=44)
-        self.pause_button.setParent(self.canvas)
-        self.pause_button.setGeometry(pause_x, theme.BAR_Y, PAUSE_W, theme.BAR_H)
-        # On the keyboard page Speak sits beside Pause, and the message bar gives up the room for it.
-        speak_x = pause_x - theme.GAP - PAUSE_W
-        self.speak_button = DwellButton("speak", "Speak", self._on_speak, icon="🔊", variant="nav", label_px=44)
-        self.speak_button.setParent(self.canvas)
-        self.speak_button.setGeometry(speak_x, theme.BAR_Y, PAUSE_W, theme.BAR_H)
+        w = theme.BAR_BUTTON_W
+        pause_x = area[0] + area[2] - w
+        self.pause_button = self._bar_button("pause", "Pause", self.pause, "⏸️", pause_x)
+        # On the keyboard page Speak and Needs sit beside Pause, and the message bar gives up the room for them.
+        needs_x = pause_x - theme.GAP - w
+        self.needs_button = self._bar_button("needs", "Needs", lambda: self.show_page(self.needs_page), "🏠", needs_x)
+        speak_x = needs_x - theme.GAP - w
+        self.speak_button = self._bar_button("speak", "Speak", self._on_speak, "🔊", speak_x)
         self.bar = MessageBar(self.canvas)
         self._bar_widths = {"needs": pause_x - theme.GAP - theme.MARGIN, "keyboard": speak_x - theme.GAP - theme.MARGIN}
         self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, self._bar_widths["needs"], theme.BAR_H)
@@ -103,15 +116,21 @@ class MainWindow(QGraphicsView):
             cfg.needs, self._on_need, lambda: self.show_page(self.keyboard_page), area, self.canvas
         )
         self.predictor = Predictor(DATA_DIR / "words.json", extra_words=[n.label for n in cfg.needs])
+        # The keyboard's side columns are big enough to sit nearer the screen edges than the keys.
+        keyboard_area = theme.content_area(
+            min(cfg.display.side_margin_px, theme.KEYBOARD_SIDE_MARGIN), cfg.display.bottom_margin_px
+        )
         self.keyboard_page = KeyboardPage(
-            self._on_letter, self._on_word, self._on_delete, self._on_clear,
-            lambda: self.show_page(self.needs_page), area, self.canvas,
+            self._on_letter, self._on_word, self._on_delete, self._on_clear, self._on_answer,
+            keyboard_area, self.canvas,
         )
         self.page: Page = self.needs_page
         self.keyboard_page.hide()
 
         # A quiet hint for the nurse in the strip below the buttons; Settings, Pause and calibration cover it.
-        self.settings_hint = QLabel("Caregiver: press F3 for Settings  (fn + F3 on a Mac)", self.canvas)
+        self.settings_hint = QLabel(
+            "Caregiver: F2 recalibrate    F3 Settings    (hold fn on a Mac: fn + F2, fn + F3)", self.canvas
+        )
         self.settings_hint.setFont(theme.font(22))
         self.settings_hint.setStyleSheet(f"color: {theme.TEXT_QUIET.name()}; background: transparent;")
         self.settings_hint.setAlignment(Qt.AlignCenter)
@@ -140,6 +159,7 @@ class MainWindow(QGraphicsView):
             cfg.gaze_filter, (cfg.display.width, cfg.display.height), reset_after_s=d.blink_grace_s
         )
         self.last_sample: Optional[GazeSample] = None
+        self.correction: Optional[EdgeCorrection] = None  # edge correction from the last accepted calibration
         self.typed = ""
         self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
         self._request_id = 0
@@ -190,9 +210,11 @@ class MainWindow(QGraphicsView):
     def _tick(self) -> None:
         now = time.monotonic()
         for raw in self.source.poll():
-            self.last_sample = self.smoother.add(raw)
             if self.calibration is not None:
-                self.calibration.feed(raw)  # unfiltered: the calibration screen shows and measures every sample
+                self.calibration.feed(raw)  # unfiltered and uncorrected: the calibration screen measures every sample
+            elif self.correction is not None and self.cfg.calibration.edge_correction:
+                raw = self.correction.apply(raw)
+            self.last_sample = self.smoother.add(raw)
 
         if self.calibration is not None or self.settings.isVisible():
             self.gaze_dot.set_point(None)
@@ -215,7 +237,9 @@ class MainWindow(QGraphicsView):
                 if not b.isHidden():
                     pos = b.mapTo(self.canvas, QPoint(0, 0))
                     rects.append((b.key, (pos.x(), pos.y(), b.width(), b.height())))
-            target = pick_target(point.x(), point.y(), rects, self.cfg.display.snap_px)
+            # Not on the rest screen: a glance past the edge must not wake it.
+            outer = 0 if self.paused else self.cfg.display.edge_snap_px
+            target = pick_target(point.x(), point.y(), rects, self.cfg.display.snap_px, outer)
 
         update = engine.update(target, now)
         selected = None
@@ -231,10 +255,16 @@ class MainWindow(QGraphicsView):
 
     # Pages
 
+    def _bar_button(self, key: str, label: str, on_select, icon: str, x: int) -> DwellButton:
+        button = DwellButton(key, label, on_select, icon=icon, variant="nav", label_px=40)
+        button.setParent(self.canvas)
+        button.setGeometry(x, theme.BAR_Y, theme.BAR_BUTTON_W, theme.BAR_H)
+        return button
+
     def _bar_buttons(self):
         """The buttons in the message bar row on the current page."""
         if self.page is self.keyboard_page:
-            return [self.speak_button, self.pause_button]
+            return [self.speak_button, self.needs_button, self.pause_button]
         return [self.pause_button]
 
     def show_page(self, page: Page) -> None:
@@ -247,6 +277,7 @@ class MainWindow(QGraphicsView):
         page.show()
         keyboard = page is self.keyboard_page
         self.speak_button.setVisible(keyboard)
+        self.needs_button.setVisible(keyboard)
         self.bar.resize(self._bar_widths["keyboard" if keyboard else "needs"], theme.BAR_H)
         self.gaze_dot.raise_()
         if page is self.keyboard_page:
@@ -261,9 +292,26 @@ class MainWindow(QGraphicsView):
         else:
             self.speaker.speak(tile.thai, "th")
 
-    def _show_typed(self) -> None:
-        self.bar.show_typing(self.typed)
+    def _show_typed(self, note: str = "", warning: bool = False) -> None:
+        self.bar.show_typing(self.typed, note, warning)
         self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
+
+    def _show_status(self, message: str, note: str = "", warning: bool = False) -> None:
+        """A status line such as "Welcome back". On the keyboard page the typed text stays in the box,
+        because the next key adds to it, and the status shows as a small note underneath."""
+        if self.page is self.keyboard_page:
+            self._show_typed(f"{message}. {note}" if note else message, warning)
+        else:
+            self.bar.show_message(message, note=note, warning=warning)
+
+    def _sentence(self) -> str:
+        return " ".join(self.typed.split()).capitalize()
+
+    def _on_answer(self, english: str, thai: str) -> None:
+        """Yes or No: spoken at once, and the typed text stays for the next key."""
+        self.bar.show_message(english, thai)
+        self._log(english, thai)
+        self.speaker.speak(thai, "th")
 
     def _on_letter(self, ch: str) -> None:
         self.typed += ch
@@ -286,7 +334,7 @@ class MainWindow(QGraphicsView):
         self._show_typed()
 
     def _on_speak(self) -> None:
-        text = " ".join(self.typed.split()).capitalize()
+        text = self._sentence()
         if not text:
             return
         self.predictor.learn(text)
@@ -310,17 +358,20 @@ class MainWindow(QGraphicsView):
     def _on_translated(self, request: int, english: str, spoken: str, ok: bool) -> None:
         if request != self._request_id:
             return  # a newer message replaced this one
-        if ok and spoken != english:
-            self.bar.show_message(english, spoken)
-            self.speaker.speak(spoken, "th")
-            self._log(english, spoken)
-        else:
-            if not ok:
+        thai = ok and spoken != english
+        # If the patient kept typing while it translated, speak it but leave their new text in the box.
+        if not (self.page is self.keyboard_page and self._sentence() != english):
+            if thai:
+                self.bar.show_message(english, spoken)
+            elif not ok:
                 self.bar.show_message(english, note="Translation failed, speaking English", warning=True)
             else:
                 self.bar.show_message(english)
+        if thai:
+            self.speaker.speak(spoken, "th")
+        else:
             self.speaker.speak(english, "en")
-            self._log(english, "")
+        self._log(english, spoken if thai else "")
 
     def _log(self, english: str, thai: str) -> None:
         try:
@@ -355,7 +406,7 @@ class MainWindow(QGraphicsView):
         self.pause_screen.hide()
         self.pause_screen.resume_button.set_state(False, 0.0)
         self.dwell.reset()
-        self.bar.show_message("Welcome back", note="Look at a button to choose it")
+        self._show_status("Welcome back", note="Look at a button to choose it")
 
     def toggle_pause(self) -> None:
         if self.paused:
@@ -372,6 +423,8 @@ class MainWindow(QGraphicsView):
         self.calibration = CalibrationScreen(
             self.source, self.map_to_canvas, self.cfg.calibration.auto_accept_max_error_px,
             self.cfg.calibration.redo_point_px, self.canvas, show_live_gaze=self.cfg.calibration.show_live_gaze,
+            edge_correction=self.cfg.calibration.edge_correction,
+            screen_px=(self.cfg.display.width, self.cfg.display.height),
         )
         self.calibration.finished.connect(self._on_calibration_finished)
         self.calibration.show()
@@ -380,11 +433,15 @@ class MainWindow(QGraphicsView):
     def _on_calibration_finished(self, outcome: str) -> None:
         path = self.cfg.calibration.saved_path
         if outcome == "accepted":
+            self.correction = self.calibration.correction
+            started = time.time()
             try:
                 self.source.save_calibration(path)
+                if path.exists() and path.stat().st_mtime >= started - 1:  # not the mouse demo, which saves nothing
+                    self._save_correction(correction_path(path))
             except Exception:
                 log.exception("Could not save calibration")
-            self.bar.show_message("Calibration done", note="Look at a button to choose it")
+            self._show_status("Calibration done", note="Look at a button to choose it")
         else:
             self._use_saved_calibration()
         self.calibration.hide()
@@ -399,10 +456,20 @@ class MainWindow(QGraphicsView):
         except Exception:
             log.exception("Could not load saved calibration")
             loaded = False
+        self.correction = None
         if loaded:
-            self.bar.show_message("Using the saved calibration", note="F2 to recalibrate")
+            self.correction = EdgeCorrection.load(correction_path(self.cfg.calibration.saved_path))
+        if loaded:
+            self._show_status("Using the saved calibration", note="F2 to recalibrate")
         else:
-            self.bar.show_message("Not calibrated", note="Press F2 to calibrate", warning=True)
+            self._show_status("Not calibrated", note="Press F2 to calibrate", warning=True)
+
+    def _save_correction(self, path: Path) -> None:
+        """Keep the edge correction beside the calibration it was measured with, or drop a stale one."""
+        if self.correction is not None:
+            self.correction.save(path)
+        elif path.exists():
+            path.unlink()
 
     # Settings
 
@@ -424,9 +491,45 @@ class MainWindow(QGraphicsView):
         self.dwell.dwell_time_s = self.cfg.dwell.dwell_time_s
         self.dwell.wobble_grace_s = self.cfg.dwell.wobble_grace_s
         self.needs_page.set_needs(self.cfg.needs)
-        self.bar.show_message("Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s")
+        edge = "on" if self.cfg.calibration.edge_correction else "off"
+        self._show_status(
+            "Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s, edge correction {edge}"
+        )
 
     # Caregiver keys
+
+    def keyPressEvent(self, event) -> None:
+        """A caregiver can type on the Mac keyboard to fix what noisy gaze typed: letters, numbers,
+        Space, Backspace (Delete), Shift+Backspace (Clear) and Enter (Speak). Calibration, Settings
+        and the rest screen keep their own keys."""
+        if self.calibration is not None or self.settings.isVisible() or self.paused:
+            super().keyPressEvent(event)
+            return
+        action = self._caregiver_key(event)
+        if action is None:
+            super().keyPressEvent(event)
+            return
+        self.show_page(self.keyboard_page)
+        action()
+
+    def _caregiver_key(self, event):
+        mods = event.modifiers() & ~(Qt.KeypadModifier | Qt.ShiftModifier)
+        if mods:
+            return None  # Ctrl, Alt and Cmd combinations are shortcuts, not typing
+        key = event.key()
+        if key == Qt.Key_Backspace:
+            return self._on_clear if event.modifiers() & Qt.ShiftModifier else self._on_delete
+        if key in (Qt.Key_Return, Qt.Key_Enter):
+            return self._on_speak
+        if key == Qt.Key_Space:
+            return lambda: self._on_letter(" ")
+        ch = MAC_KEYS.get(event.nativeVirtualKey()) if IS_MAC else None
+        if ch is None and (Qt.Key_A <= key <= Qt.Key_Z or Qt.Key_0 <= key <= Qt.Key_9):
+            ch = chr(key)  # Qt key codes for A-Z and 0-9 are their ASCII codes
+        if ch is not None:
+            return lambda: self._on_letter(ch)
+        log.debug("Key not used for typing: key=%#x native=%#x text=%r", key, event.nativeVirtualKey(), event.text())
+        return None
 
     def _toggle_gaze_dot(self) -> None:
         self.show_gaze_dot = not self.show_gaze_dot

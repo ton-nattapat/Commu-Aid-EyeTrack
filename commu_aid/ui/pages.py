@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Callable, List
 
 from PySide6.QtCore import QRect
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QWidget
 
 from ..config import NeedTile
@@ -70,9 +71,15 @@ class NeedsPage(Page):
 
 
 class KeyboardPage(Page):
-    ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
+    """Yes and No down the left, Delete and Clear down the right, and between them the word
+    suggestions, a number row and the letters. Speak, Needs and Pause sit beside the message bar."""
+
+    ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
+    OFFSETS = [0, 0, 0.5, 0]
     UNITS = 10  # keys per full row
-    SUGGESTIONS = 4  # word prediction buttons across the top row
+    SUGGESTIONS = 6  # word prediction buttons across the top row
+    WORD_PX = 40
+    ANSWERS = [("yes", "Yes", "ใช่"), ("no", "No", "ไม่ใช่")]  # key, shown, spoken
 
     def __init__(
         self,
@@ -80,38 +87,52 @@ class KeyboardPage(Page):
         on_word: Callable[[str], None],
         on_delete: Callable[[], None],
         on_clear: Callable[[], None],
-        on_needs: Callable[[], None],
+        on_answer: Callable[[str, str], None],
         area=None,
         parent=None,
     ):
         super().__init__(area, parent)
         area_w, area_h = self.width(), self.height()
-        unit_w = (area_w - (self.UNITS - 1) * theme.GAP) / self.UNITS
-        row_h = (area_h - 4 * theme.GAP) / 5
+        gap, col_w = theme.KEY_GAP, theme.KEY_COLUMN_W
+
+        def column(x: int, buttons: List[DwellButton]) -> None:
+            h = (area_h - (len(buttons) - 1) * gap) / len(buttons)
+            for i, b in enumerate(buttons):
+                self.add(b, QRect(x, round(i * (h + gap)), col_w, round(h)))
+
+        column(0, [
+            DwellButton(key, label.upper(), lambda e=label, t=thai: on_answer(e, t), variant=key, label_px=60)
+            for key, label, thai in self.ANSWERS
+        ])
+        # Delete is used most, so it is tall and away from the corners; Clear sits below it.
+        column(area_w - col_w, [
+            DwellButton("delete", "Delete", on_delete, icon="⌫", variant="nav", label_px=44),
+            DwellButton("clear", "Clear", on_clear, label_px=44),
+        ])
+
+        keys_x = col_w + gap
+        keys_w = area_w - 2 * keys_x
+        unit_w = (keys_w - (self.UNITS - 1) * gap) / self.UNITS
+        row_h = (area_h - len(self.ROWS) * gap) / (len(self.ROWS) + 1)
 
         def rect(col: float, row: int, span: float = 1) -> QRect:
-            x = col * (unit_w + theme.GAP)
-            w = span * unit_w + (span - 1) * theme.GAP
-            return QRect(round(x), round(row * (row_h + theme.GAP)), round(w), round(row_h))
+            x = keys_x + col * (unit_w + gap)
+            w = span * unit_w + (span - 1) * gap
+            return QRect(round(x), round(row * (row_h + gap)), round(w), round(row_h))
 
         # Row 0: predicted words. Picking one finishes the current word and adds a space.
-        word_w = (area_w - (self.SUGGESTIONS - 1) * theme.GAP) / self.SUGGESTIONS
+        word_w = (keys_w - (self.SUGGESTIONS - 1) * gap) / self.SUGGESTIONS
         self.suggestion_buttons: List[DwellButton] = []
         for i in range(self.SUGGESTIONS):
-            b = DwellButton(("word", i), "", lambda i=i: on_word(self.suggestion_buttons[i].label), label_px=48, variant="word")
+            b = DwellButton(("word", i), "", lambda i=i: on_word(self.suggestion_buttons[i].label), label_px=self.WORD_PX, variant="word")
             self.suggestion_buttons.append(
-                self.add(b, QRect(round(i * (word_w + theme.GAP)), 0, round(word_w), round(row_h)))
+                self.add(b, QRect(round(keys_x + i * (word_w + gap)), 0, round(word_w), round(row_h)))
             )
 
-        offsets = [0, 0.5, 0]
-        for r, letters in enumerate(self.ROWS):
-            for c, ch in enumerate(letters):
-                self.add(DwellButton(("key", ch), ch, lambda ch=ch: on_letter(ch), label_px=64), rect(offsets[r] + c, r + 1))
-        self.add(DwellButton("delete", "Delete", on_delete, label_px=44), rect(7, 3, 3))
-        # Speak sits in the top row beside Pause (see MainWindow), away from the letters.
-        self.add(DwellButton("space", "Space", lambda: on_letter(" "), label_px=44), rect(0, 4, 5))
-        self.add(DwellButton("clear", "Clear", on_clear, label_px=44), rect(5, 4, 3))
-        self.add(DwellButton("nav", "Needs", on_needs, icon="🏠", label_px=44, variant="nav"), rect(8, 4, 2))
+        for r, (chars, offset) in enumerate(zip(self.ROWS, self.OFFSETS)):
+            for c, ch in enumerate(chars):
+                self.add(DwellButton(("key", ch), ch, lambda ch=ch: on_letter(ch), label_px=60), rect(offset + c, r + 1))
+        self.add(DwellButton("space", "Space", lambda: on_letter(" "), label_px=44), rect(7, len(self.ROWS), 3))
 
     def set_suggestions(self, words: List[str]) -> None:
         """Show up to SUGGESTIONS words; unused buttons are hidden so they cannot be chosen."""
@@ -119,7 +140,10 @@ class KeyboardPage(Page):
             word = words[i] if i < len(words) else ""
             if word != b.label:
                 b.label = word
-                b.label_px = 48 if len(word) <= 11 else max(30, 48 * 11 // len(word))  # long words still fit
+                b.label_px = self.WORD_PX
+                room = b.width() - 24
+                while b.label_px > 24 and QFontMetrics(theme.font(b.label_px, bold=True)).horizontalAdvance(word) > room:
+                    b.label_px -= 2  # long words still fit
                 b.set_state(False, 0.0)
                 b.update()
             b.setVisible(bool(word))

@@ -60,3 +60,20 @@ def test_gaze_filter_survives_save(tmp_path):
     out = tmp_path / "config.yaml"
     cfg.save(out)
     assert load_config(out).gaze_filter.fixation_radius_px == 100
+
+
+def test_packaged_app_keeps_its_config_in_the_user_folder(tmp_path):
+    from commu_aid.main import default_config_path
+
+    bundled = ROOT / "config.yaml"
+    assert default_config_path(frozen=False, bundled=bundled, user_dir=tmp_path) == bundled
+
+    user_dir = tmp_path / ".commu_aid"
+    path = default_config_path(frozen=True, bundled=bundled, user_dir=user_dir)
+    assert path == user_dir / "config.yaml"
+    assert path.read_text(encoding="utf-8") == bundled.read_text(encoding="utf-8")
+
+    # A copy the caregiver already changed is kept on the next start.
+    path.write_text("dwell:\n  dwell_time_s: 1.5\n", encoding="utf-8")
+    assert default_config_path(frozen=True, bundled=bundled, user_dir=user_dir) == path
+    assert load_config(path).dwell.dwell_time_s == 1.5
