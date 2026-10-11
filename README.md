@@ -28,8 +28,9 @@ in 0.25 s steps) to choose it. The app shows the English text and speaks it in T
   turns off except one large **Resume** button at the top centre, which needs a longer look
   (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
 - **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.25 s steps, with a large
-  slider and big − / + buttons), the wobble grace, switch the edge correction on or off, and edit
-  the Needs tiles.
+  slider and big − / + buttons), the wobble grace, the gaze steadiness (Light to Strong, default
+  High), switch the edge correction on or off, and edit the Needs tiles. Changes apply on Save,
+  without a restart.
   A small line at the bottom of the Needs and Keyboard pages reminds the nurse of F2 (recalibrate)
   and F3 (Settings), with fn on a Mac.
 - **Wobble grace**: if the gaze slips onto a neighbouring button and comes back within 0.5 s
@@ -340,7 +341,7 @@ Caregiver keys:
 | Key | Action |
 | --- | --- |
 | F2 | Calibrate again |
-| F3 | Settings (dwell time, wobble grace, edge correction, Needs tiles) |
+| F3 | Settings (dwell time, wobble grace, gaze steadiness, edge correction, Needs tiles) |
 | F4 | Pause or resume |
 | Ctrl+G (Cmd+G on a Mac) | Show or hide the gaze dot |
 | F11 | Full screen on or off |
@@ -369,6 +370,9 @@ Everything is in [`config.yaml`](config.yaml):
 
 - `dwell`: dwell time, blink grace, cooldown, wobble grace.
 - `gaze_filter`: how the gaze point is steadied (see [If the gaze point is shaky](#if-the-gaze-point-is-shaky)).
+  The Settings page's Gaze steadiness levels set `fixation_radius_px` to 60, 80, 100, 120 or 140 px
+  (Light to Strong) and switch `method` to `fixation`; a value set here by hand is kept until
+  the level is changed on the page.
 - `display`: edge margins and snapping (see [If gaze misses near the screen edges](#if-gaze-misses-near-the-screen-edges)).
 - `calibration`: for example `auto_accept_max_error_px` to accept a good calibration without
   pressing Enter, `redo_point_px` to set when a calibration point is collected again,
@@ -434,7 +438,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Edge correction ─▶ Gaze filter ─
 | `commu_aid/ui/gaze_dot.py` | Gaze dot overlay (Ctrl+G) |
 | `commu_aid/ui/pause_screen.py` | Rest screen with the long-dwell Resume button |
 | `commu_aid/ui/calibration.py` | Start-up calibration: position check with face outline, live gaze, result plots |
-| `commu_aid/ui/settings.py` | Caregiver settings (dwell slider in 0.25 s steps, wobble grace, Needs tiles) |
+| `commu_aid/ui/settings.py` | Caregiver settings (dwell slider in 0.25 s steps, wobble grace, gaze steadiness, edge correction, Needs tiles) |
 | `commu_aid/predict.py` | Offline word prediction (10,000 common words, care words, learning) |
 | `commu_aid/data/` | Word lists for prediction (`english_words.txt`, `care_words.txt`) |
 | `commu_aid/speech.py` | Offline text-to-speech (`say` on macOS, pyttsx3 elsewhere) |
