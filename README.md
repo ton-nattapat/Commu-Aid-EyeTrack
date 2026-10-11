@@ -31,7 +31,7 @@ in 0.25 s steps) to choose it. The app shows the English text and speaks it in T
   (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
 - **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.25 s steps, with a large
   slider and big − / + buttons), the wobble grace, the gaze steadiness (Light to Strong, default
-  High), the speech speed (120 to 300 words a minute) and the Thai voice (with a Try voice button),
+  High), the speech speed (120 to 300 words a minute) and the Thai voice (‹ / › buttons and a Try voice button),
   switch the edge correction on or off, and edit the Needs tiles. Changes apply on Save,
   without a restart.
   A small line at the bottom of the Needs and Keyboard pages reminds the nurse of F2 (recalibrate)

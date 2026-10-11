@@ -51,7 +51,6 @@ QWidget#settings { background: #101418; }
 QLabel { color: #f4f6f8; }
 QTableWidget { background: #1e252d; color: #f4f6f8; gridline-color: #3a4652; font-size: 26px; }
 QHeaderView::section { background: #24324a; color: #f4f6f8; font-size: 24px; padding: 8px; border: none; }
-QComboBox#voice { font-size: 28px; padding: 14px 20px; border: 2px solid #3a4652; border-radius: 16px; }
 QComboBox { font-size: 24px; background: #24324a; color: #f4f6f8; border: none; padding: 4px 12px; }
 QComboBox QAbstractItemView { background: #24324a; color: #f4f6f8; selection-background-color: #3a4652; }
 QPushButton { font-size: 28px; font-weight: bold; padding: 14px 40px;
@@ -241,11 +240,30 @@ class SettingsPage(QWidget):
         self.rate_value.setFont(theme.font(40, bold=True))
         self.rate_value.setMinimumWidth(200)
         self.rate_value.setAlignment(Qt.AlignCenter)
-        voice_label = QLabel("Thai voice")
-        voice_label.setFont(theme.font(32, bold=True))
-        self.voice = QComboBox()
-        self.voice.setObjectName("voice")
-        self.voice.setMinimumWidth(420)
+        # The voice steps through the list with the same big buttons as the other rows; a drop-down
+        # menu's popup draws badly on macOS with this page's large fonts.
+        self.voice_names: list = []
+        self.voice_index = 0
+        self.voice_prev = self._button("\u2039", lambda: self._set_voice(self.voice_index - 1))
+        self.voice_next = self._button("\u203a", lambda: self._set_voice(self.voice_index + 1))
+        voice_caption = QLabel("Thai voice")
+        voice_caption.setFont(theme.font(24))
+        voice_caption.setStyleSheet("color: #9aa5b1;")
+        voice_caption.setAlignment(Qt.AlignCenter)
+        self.voice_value = QLabel()
+        self.voice_value.setFont(theme.font(32, bold=True))
+        self.voice_value.setAlignment(Qt.AlignCenter)
+        self.voice_value.setWordWrap(True)
+        voice_column = QVBoxLayout()
+        voice_column.setSpacing(0)
+        voice_column.addStretch(1)
+        voice_column.addWidget(voice_caption)
+        voice_column.addWidget(self.voice_value)
+        voice_column.addStretch(1)
+        voice_box = QWidget()
+        voice_box.setLayout(voice_column)
+        voice_box.setFixedWidth(380)
+        voice_column.setContentsMargins(0, 0, 0, 0)
         self.try_voice = QPushButton("Try voice")
         self.try_voice.clicked.connect(self._try_voice)
         speech_row.addWidget(rate_label)
@@ -253,8 +271,9 @@ class SettingsPage(QWidget):
         speech_row.addWidget(self.rate_value)
         speech_row.addWidget(self.rate_more)
         speech_row.addStretch(1)
-        speech_row.addWidget(voice_label)
-        speech_row.addWidget(self.voice)
+        speech_row.addWidget(self.voice_prev)
+        speech_row.addWidget(voice_box)
+        speech_row.addWidget(self.voice_next)
         speech_row.addWidget(self.try_voice)
         layout.addLayout(speech_row)
 
@@ -303,7 +322,7 @@ class SettingsPage(QWidget):
             self.cfg.gaze_filter.fixation_radius_px = STEADINESS_RADII_PX[self.steady_level]
         self.cfg.calibration.edge_correction = self.edge_toggle.isChecked()
         self.cfg.speech.rate = self.rate
-        self.cfg.speech.voice_th = self.voice.currentData()
+        self.cfg.speech.voice_th = self.voice_names[self.voice_index]
         needs = []
         for row in range(NEEDS_TILE_COUNT):
             icon, label, thai = (self._text(row, c) for c in range(3))
@@ -360,15 +379,19 @@ class SettingsPage(QWidget):
         current = self.cfg.speech.voice_th or SYSTEM_VOICE
         if current != SYSTEM_VOICE and current not in names:
             names.append(current)
-        self.voice.clear()
-        self.voice.addItem("System voice", SYSTEM_VOICE)
-        for name in names:
-            self.voice.addItem(name, name)
-        self.voice.setCurrentIndex(max(0, self.voice.findData(current)))
+        self.voice_names = [SYSTEM_VOICE, *names]
+        self._set_voice(self.voice_names.index(current))
+
+    def _set_voice(self, index: int) -> None:
+        self.voice_index = max(0, min(len(self.voice_names) - 1, index))
+        name = self.voice_names[self.voice_index]
+        self.voice_value.setText("System voice" if name == SYSTEM_VOICE else name)
+        self.voice_prev.setEnabled(self.voice_index > 0)
+        self.voice_next.setEnabled(self.voice_index < len(self.voice_names) - 1)
 
     def _try_voice(self) -> None:
         if self.speaker is not None:
-            self.speaker.preview(TRY_TEXT, "th", self.voice.currentData(), self.rate)
+            self.speaker.preview(TRY_TEXT, "th", self.voice_names[self.voice_index], self.rate)
 
     def _show_dwell(self, steps: int) -> None:
         self.dwell_value.setText(f"{seconds_text(steps * DWELL_STEP_S)} s")
