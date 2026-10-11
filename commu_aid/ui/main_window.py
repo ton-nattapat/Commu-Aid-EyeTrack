@@ -163,6 +163,7 @@ class MainWindow(QGraphicsView):
         self.typed = ""
         self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
         self._request_id = 0
+        self._pending_request: Optional[int] = None  # the message waiting for its translation
         self._translated.connect(self._on_translated)
 
         for keys, slot in (
@@ -340,9 +341,13 @@ class MainWindow(QGraphicsView):
         self.predictor.learn(text)
         self._request_id += 1
         request = self._request_id
+        self._pending_request = request
         lang = self.cfg.language
         if lang.speak == "th" and lang.translate and self.translator.enabled:
             self.bar.show_message(text, note="Translating...")
+            # Backstop for a translation that never comes back (stuck model, slow first load).
+            wait_ms = int((float(self.cfg.translation.timeout_s) + 2) * 1000)
+            QTimer.singleShot(wait_ms, lambda: self._on_translation_timeout(request, text))
 
             def work():
                 try:
@@ -355,9 +360,20 @@ class MainWindow(QGraphicsView):
         else:
             self._translated.emit(request, text, text, lang.speak != "th")
 
+    def _on_translation_timeout(self, request: int, english: str) -> None:
+        if request != self._pending_request:
+            return  # already answered, or a newer message replaced this one
+        self._pending_request = None
+        log.warning("Translation timed out for %r", english)
+        if not (self.page is self.keyboard_page and self._sentence() != english):
+            self.bar.show_message(english, note="Translation took too long, speaking English", warning=True)
+        self.speaker.speak(english, "en")
+        self._log(english, "")
+
     def _on_translated(self, request: int, english: str, spoken: str, ok: bool) -> None:
-        if request != self._request_id:
-            return  # a newer message replaced this one
+        if request != self._pending_request:
+            return  # timed out already, or a newer message replaced this one
+        self._pending_request = None
         thai = ok and spoken != english
         # If the patient kept typing while it translated, speak it but leave their new text in the box.
         if not (self.page is self.keyboard_page and self._sentence() != english):
