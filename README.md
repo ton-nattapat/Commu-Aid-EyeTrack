@@ -2,7 +2,7 @@
 
 A full-screen communication aid for a person with ALS, driven by a Tobii Pro Spark eye tracker.
 The patient looks at a button for a set time (3 seconds by default, adjustable from 1 to 3 s
-in 0.5 s steps) to choose it. The app shows the English text and speaks it in Thai.
+in 0.25 s steps) to choose it. The app shows the English text and speaks it in Thai.
 
 - **Page 1, Needs:** 11 large tiles (Thirsty, Hungry, Pee, Pain, Too hot, Too cold, Turn me,
   Suction, Yes, No, Call caregiver) and a Keyboard tile. Each tile speaks a fixed Thai phrase.
@@ -14,19 +14,29 @@ in 0.5 s steps) to choose it. The app shows the English text and speaks it in Th
   learns from every message the patient speaks.
   Speak and Needs sit at the top beside Pause. Speak translates the typed English to Thai offline
   (Meta NLLB-200) and speaks the Thai.
-- **Calibration** runs every time the app starts: position check, 5-point calibration (a point
-  with bad data is shown once more), validation, then Accept or Retry. The position check draws a face
+- **Calibration** runs every time the app starts: position check, 9-point calibration (corners,
+  edge middles and centre; a point with bad data is shown once more), 9-point validation out to
+  the edge buttons, then Accept or Retry. The position check draws a face
   outline that follows the patient's head (bigger when closer, tilted with the eyes) over a dashed
   outline of where it should be. The live gaze is drawn
   throughout, and the result plots every gaze sample collected at each point, per eye.
 - **Edges:** buttons keep clear of the left, right and bottom screen edges, where the tracker is
-  least accurate, and gaze that lands just past a button still counts for it.
+  least accurate, and gaze that lands just past a button still counts for it. Gaze in the margin
+  outside all the buttons counts for the nearest edge button. The miss measured at each
+  validation dot becomes an **edge correction** that is taken out of the live gaze.
 - **Pause (top right)** rests the screen while the patient watches TV or talks: every button
   turns off except one large **Resume** button at the top centre, which needs a longer look
   (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
-- **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.5 s steps, with a large
-  slider and big − / + buttons) and the Needs tiles.
-  A small line at the bottom of the Needs and Keyboard pages reminds the nurse which key opens it.
+- **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.25 s steps, with a large
+  slider and big − / + buttons), the wobble grace, the gaze steadiness (Light to Strong, default
+  High), switch the edge correction on or off, and edit the Needs tiles. Changes apply on Save,
+  without a restart.
+  A small line at the bottom of the Needs and Keyboard pages reminds the nurse of F2 (recalibrate)
+  and F3 (Settings), with fn on a Mac.
+- **Wobble grace**: if the gaze slips onto a neighbouring button and comes back within 0.5 s
+  (`dwell.wobble_grace_s`, 0 to 1 s), the first button keeps its progress instead of starting over.
+  If the gaze stays on the new button, its dwell counts from when the gaze arrived. Resume on
+  the rest screen keeps the short blink grace, so two short looks still never wake the screen.
 
 | Needs | Keyboard |
 | --- | --- |
@@ -38,6 +48,85 @@ in 0.5 s steps) to choose it. The app shows the English text and speaks it in Th
 
 The design and decisions are in the
 [design proposal](https://claude.ai/code/artifact/2b4e4611-b66c-4974-8125-2c922de159a4).
+
+## Install on a Mac (the app)
+
+This is everything a new Mac needs to run Communication Aid from the installer, without Python.
+Do the steps in order; each is needed once per Mac. You need the `.dmg` built as in
+[Build the installer](#build-the-installer), a Mac login with administrator rights, and
+internet for the downloads.
+
+1. **Install the app.** Open `CommunicationAid-<version>-<chip>.dmg` and drag
+   **Communication Aid** onto **Applications**. The app only runs on the same chip as the Mac
+   that built it: built on Apple silicon (M1 to M4), it needs an Apple silicon Mac.
+2. **Allow it to open.** It isn't signed by Apple, so macOS blocks it the first time:
+   1. Double-click **Communication Aid** in Applications. When macOS says it can't be opened,
+      click **Done**.
+   2. Open **System Settings > Privacy & Security**, scroll down to "Communication Aid was
+      blocked" and click **Open Anyway**. Enter the Mac password if asked.
+   3. Open the app again and click **Open Anyway**. Quit it for now (Cmd+Q).
+
+   If there is no Open Anyway button, run
+   `xattr -dr com.apple.quarantine "/Applications/Communication Aid.app"` in Terminal instead.
+3. **Install Rosetta (Apple silicon Macs only).** Tobii's driver is an Intel program, so it needs
+   Rosetta. In Terminal:
+
+   ```bash
+   softwareupdate --install-rosetta --agree-to-license
+   ```
+
+4. **Install the Tobii Pro Spark driver.** Follow
+   [Install the Tobii Pro Spark driver](#install-the-tobii-pro-spark-driver-runtime) below:
+   download the runtime from Tobii Connect, double-click **install-driver**, type the Mac
+   password, wait for `Runtime Service 2.2.3.0 Installed`. Then plug the Spark straight into
+   the Mac (no hub), or unplug and replug it.
+5. **Install Tobii Pro Eye Tracker Manager.** Download it for macOS from
+   [Tobii Pro Eye Tracker Manager](https://www.tobii.com/products/software/applications-and-developer-kits/tobii-pro-eye-tracker-manager),
+   open the download and drag it to Applications, then open it (allow it in Privacy & Security
+   if macOS asks). The Spark should appear in its list. If it doesn't, the driver in step 4 isn't
+   running yet: unplug and replug the Spark, or restart the Mac. Ignore its own driver Install
+   button if it is greyed out; step 4 replaces it.
+6. **Run Display Setup.** In Eye Tracker Manager, click the Spark, then **Display Setup**. Enter
+   the size of the screen the Spark is mounted on (measure the visible picture in millimetres)
+   and where the Spark sits under it, then save. Do this again whenever the Spark moves to a
+   different screen. A wrong size makes gaze miss more and more towards the screen edges.
+7. **Add the Thai voice.** System Settings > Accessibility > Spoken Content > System Voice >
+   Manage Voices, find Thai and add **Kanya**.
+8. **Start Communication Aid.** Calibration runs first: the patient follows the dots, then press
+   Enter to accept or R to retry. On the first start the translation model downloads (about
+   2.5 GB), so keep the Mac online for a few minutes; the first Speak waits for it.
+
+If the app can't find the Spark, it says why: click **Show Details** for the full check, or
+choose **Use the mouse** to try the app without it. To run the same check from Terminal:
+
+```bash
+"/Applications/Communication Aid.app/Contents/MacOS/Communication Aid" --check-tracker
+```
+
+Settings, the saved calibration and `app.log` are in the hidden folder `~/.commu_aid`
+(Finder: Go > Go to Folder, `~/.commu_aid`). Send `app.log` with any problem report.
+
+To uninstall, quit the app and drag it from Applications to the Bin. To remove its settings
+and the translation model too:
+
+```bash
+rm -rf ~/.commu_aid ~/.cache/huggingface/hub/models--facebook--nllb-200-distilled-600M
+```
+
+The Tobii driver and Eye Tracker Manager stay installed.
+
+### Build the installer
+
+On the development Mac, with the environment from [Setup](#setup-macos):
+
+```bash
+conda activate commu-aid
+packaging/mac/build_mac.sh      # makes dist/CommunicationAid-<version>-<chip>.dmg
+```
+
+Send the `.dmg` by AirDrop, USB stick or a shared drive. Rebuild after pulling new changes, so the
+installer has them. Options (`--version`, `--no-translate`, signing) are in
+[docs/install-mac.md](docs/install-mac.md).
 
 ## Setup (macOS)
 
@@ -126,7 +215,9 @@ so on newer macOS its Install button stays greyed out. Install the runtime direc
    python -m commu_aid.check_tracker
    ```
 
-   It should print a line like `Tracker     Tobii Pro Spark  serial TPE01-...`.
+   It should print a line like `Tracker     Tobii Pro Spark  serial TPE01-...`. With the Mac
+   app instead of Python, run
+   `"/Applications/Communication Aid.app/Contents/MacOS/Communication Aid" --check-tracker`.
 
 Don't commit the `.dmg` to this repo: it is Tobii's software, so download it from Tobii Connect
 on each Mac.
@@ -141,12 +232,6 @@ Manage Voices, and add **Kanya** (Thai).
 
 The first time Speak is used, the translation model downloads from Hugging Face
 (about 2.5 GB) and is cached after that, so the first run needs internet.
-
-If a translation takes longer than `translation.timeout_s` (8 s by default), the app gives up
-and speaks the English instead, with a warning under the message. The app also fixes how
-NLLB spells ำ (it writes "น้ำ" as น้ + ํ + า), which the Kanya voice could not read.
-For better (but slower) translations, set `translation.model` to
-`facebook/nllb-200-distilled-1.3B` (about 5.5 GB download).
 
 ### If the app says "No Tobii eye tracker found"
 
@@ -192,10 +277,28 @@ through these in order, recalibrating (F2) after each change:
    line shows which way it missed. Lines all pointing the same way mean an offset (position);
    lines all pointing outward or inward mean Display Setup.
 
-The layout already helps: `side_margin_px` and `bottom_margin_px` in `config.yaml` keep buttons
-away from the edges (the keys stay at least 110 px), and `snap_px` lets gaze in a gap or just
-past the edge count for the nearest button. Raising the margins further makes the keys smaller,
-so fix Display Setup and position first.
+What is left after that, the app corrects itself. The 9 validation dots reach the outermost
+buttons (Pause at the top, the edge keys at the sides and bottom). Where the gaze landed at each
+dot is turned into a smooth shift that the main screen takes out of every gaze sample
+(on by default; each shift is capped at 250 px). The caregiver can switch it off and on with the
+**Edge correction** button on the Settings page (F3); every calibration learns it either way, so
+switching takes effect at once without recalibrating (`calibration.edge_correction` in `config.yaml`). It works best
+when the patient's head stays still after calibrating, because the miss then stays the same.
+The result screen says "Edge correction on" and how far it moves the gaze, and the live gaze dot
+there is already corrected: ask the patient to look at a few edge dots again and check the dot
+now lands on them before pressing Accept. The correction is saved beside the calibration
+(`~/.commu_aid/calibration.edge.json`) and used again when the calibration is skipped.
+
+The layout helps too: `side_margin_px` and `bottom_margin_px` in `config.yaml` keep buttons
+away from the edges (the keys stay at least 110 px), `snap_px` lets gaze in a gap or just
+past the edge count for the nearest button, and `edge_snap_px` (150 px) lets gaze anywhere in the
+margin outside all the buttons count for the nearest edge button (not on the rest screen, so a
+glance away does not wake it). Raising the margins further makes the keys smaller, so fix
+Display Setup and position first.
+
+To try the edge correction without the tracker, `python -m commu_aid --simulate edges
+--calibration-demo --windowed` adds an error that grows towards the sides and bottom; follow the
+validation dots with the mouse.
 
 ## Run
 
@@ -210,6 +313,7 @@ python -m commu_aid --skip-calibration   # use the last saved calibration
 python -m commu_aid.check_tracker        # check the tracker without starting the app
 python -m commu_aid --config other.yaml  # use a different settings file
 python -m commu_aid -v                   # verbose logging
+python -m commu_aid --check-tracker      # same as python -m commu_aid.check_tracker
 ```
 
 ### Simulated eye tracker
@@ -224,6 +328,7 @@ cooldown settings before the tracker is available.
 python -m commu_aid --simulate --windowed          # typical bedside conditions
 python -m commu_aid --simulate mild --windowed     # close to the tracker's specification
 python -m commu_aid --simulate hard --windowed     # tired patient, glasses, poor light
+python -m commu_aid --simulate edges --windowed    # typical, plus error growing towards the sides and bottom
 python -m commu_aid --simulate --sim-seed 1        # repeat the same jitter and blinks every run
 python -m commu_aid --simulate --calibration-demo  # with the pretend calibration screen
 ```
@@ -236,13 +341,18 @@ Caregiver keys:
 | Key | Action |
 | --- | --- |
 | F2 | Calibrate again |
-| F3 | Settings (dwell time, Needs tiles) |
+| F3 | Settings (dwell time, wobble grace, gaze steadiness, edge correction, Needs tiles) |
 | F4 | Pause or resume |
 | Ctrl+G (Cmd+G on a Mac) | Show or hide the gaze dot |
 | F11 | Full screen on or off |
 | Ctrl+Q (Cmd+Q on a Mac) | Quit |
 
 On a Mac keyboard, hold **fn** to use F2, F3, F4 and F11.
+
+A caregiver can also fix the message box from the keyboard. Letters, numbers and Space type
+into it (from the Needs page this opens the keyboard page), Backspace deletes one character,
+Shift+Backspace clears the box and Enter speaks it. These keys do nothing while calibration,
+Settings or the rest screen is showing.
 
 On the calibration screen: **Space** starts, **Enter** accepts, **R** retries, **Esc** skips and
 uses the saved calibration, **G** shows or hides the live gaze, and **S** shows or hides the gaze
@@ -258,12 +368,15 @@ an offset; a wide cloud is noise; one eye's cluster away from the other's points
 
 Everything is in [`config.yaml`](config.yaml):
 
-- `dwell`: dwell time, blink grace, cooldown.
+- `dwell`: dwell time, blink grace, cooldown, wobble grace.
 - `gaze_filter`: how the gaze point is steadied (see [If the gaze point is shaky](#if-the-gaze-point-is-shaky)).
+  The Settings page's Gaze steadiness levels set `fixation_radius_px` to 60, 80, 100, 120 or 140 px
+  (Light to Strong) and switch `method` to `fixation`; a value set here by hand is kept until
+  the level is changed on the page.
 - `display`: edge margins and snapping (see [If gaze misses near the screen edges](#if-gaze-misses-near-the-screen-edges)).
 - `calibration`: for example `auto_accept_max_error_px` to accept a good calibration without
-  pressing Enter, `redo_point_px` to set when a calibration point is collected again, and
-  `show_live_gaze`.
+  pressing Enter, `redo_point_px` to set when a calibration point is collected again,
+  `show_live_gaze`, and `edge_correction` (also on the Settings page).
 - `pause`: `resume_dwell_s`, how long the patient must look at Resume to leave the rest screen.
 - `needs`, `translation`, `speech`: the Needs tiles and their Thai phrases, translation, voices.
 The Thai phrases should be checked by a Thai speaker; they use the male form (ผม ... ครับ).
@@ -294,15 +407,16 @@ old moving average. Press Ctrl+G to watch the dot while you try them.
 
 The app writes to `~/.commu_aid/`: the saved calibration, generated sounds, and
 `messages.log` (every message with a time stamp), and `words.json` (the words and word pairs
-the patient has spoken, used to rank predictions; delete it to start fresh).
+the patient has spoken, used to rank predictions; delete it to start fresh). The Mac app also
+keeps its `config.yaml` and `app.log` there.
 
 ## How it works
 
 ```text
-Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Targets ─▶ Dwell engine ─▶ UI pages ─▶ Speech
- (tobii_research    (or mouse,    (combine eyes,  (which    (1-3 s timer,   (Needs,
-  60 Hz)             simulated)    fixation        button,   grace,          Keyboard,
-                                   filter)         snapping) cooldown)       Pause)
+Tobii Pro Spark ─▶ Gaze source ─▶ Edge correction ─▶ Gaze filter ─▶ Targets ─▶ Dwell engine ─▶ UI pages ─▶ Speech
+ (tobii_research    (or mouse,    (from the 9        (combine eyes,  (which    (1-3 s timer,   (Needs,
+  60 Hz)             simulated)    validation dots)   fixation        button,   grace,          Keyboard,
+                                                      filter)         snapping) cooldown)       Pause)
 ```
 
 | File | Role |
@@ -314,6 +428,7 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Targets ─▶ Dwel
 | `commu_aid/gaze/mouse_source.py` | Mouse as fake gaze for development |
 | `commu_aid/gaze/simulated_source.py` | Simulated tracker: mouse plus jitter, offset, blinks, dropouts |
 | `commu_aid/gaze/filters.py` | Combine both eyes; gaze filters (fixation, One Euro, moving average) |
+| `commu_aid/gaze/correction.py` | Edge correction learned from the validation dots |
 | `commu_aid/dwell.py` | Dwell state machine (no UI code, unit tested) |
 | `commu_aid/targets.py` | Which button the gaze is on, with snapping to the nearest one |
 | `commu_aid/ui/main_window.py` | Full-screen window, gaze loop, page switching |
@@ -323,12 +438,13 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Gaze filter ─▶ Targets ─▶ Dwel
 | `commu_aid/ui/gaze_dot.py` | Gaze dot overlay (Ctrl+G) |
 | `commu_aid/ui/pause_screen.py` | Rest screen with the long-dwell Resume button |
 | `commu_aid/ui/calibration.py` | Start-up calibration: position check with face outline, live gaze, result plots |
-| `commu_aid/ui/settings.py` | Caregiver settings (dwell slider in 0.5 s steps, Needs tiles) |
+| `commu_aid/ui/settings.py` | Caregiver settings (dwell slider in 0.25 s steps, wobble grace, gaze steadiness, edge correction, Needs tiles) |
 | `commu_aid/predict.py` | Offline word prediction (10,000 common words, care words, learning) |
 | `commu_aid/data/` | Word lists for prediction (`english_words.txt`, `care_words.txt`) |
 | `commu_aid/speech.py` | Offline text-to-speech (`say` on macOS, pyttsx3 elsewhere) |
 | `commu_aid/sounds.py` | Click and caregiver-alarm sounds, generated on first run |
 | `commu_aid/translate.py` | Offline English to Thai with NLLB-200 |
+| `packaging/mac/` | Mac app and `.dmg` installer build ([docs/install-mac.md](docs/install-mac.md)) |
 
 Dwell rules: a selection fires after the dwell time on one button; a blink or glance away
 shorter than 0.3 s does not reset the timer; after a selection, nothing can be selected for
@@ -344,6 +460,8 @@ python -m pytest        # in the activated commu-aid environment (pytest comes w
 The tests cover the dwell engine with scripted gaze streams, the gaze filters, the simulated
 eye tracker (jitter, offset, drift, blinks, dropouts, repeatable seeds), word prediction, config loading and saving, and the whole window driven by a scripted gaze source (choosing a need,
 the alarm, typing and speaking, word prediction, translation failure, page switching, settings
-and the 0.5 s dwell steps, edge margins and snapping, pause and resume), button targeting and
-layout, the tracker checker, and the calibration screen (collecting bad points again, spotting a
-Display Setup problem, keeping every gaze sample per eye, the live gaze).
+and the 0.25 s dwell steps, edge margins and snapping, the edge correction, pause and resume),
+button targeting and layout, the edge correction (on simulated edge error it cuts the median miss
+at the edge buttons from about 115 to 30 px), the tracker checker, and the calibration screen
+(collecting bad points again, spotting a Display Setup problem, keeping every gaze sample per
+eye, the live gaze, learning the edge correction).

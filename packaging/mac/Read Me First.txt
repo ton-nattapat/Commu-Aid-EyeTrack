@@ -1,0 +1,46 @@
+Communication Aid: installing on this Mac
+=========================================
+
+1. Install the app
+   Drag "Communication Aid" onto the Applications folder in this window.
+
+2. Open it the first time
+   The app is not signed by Apple, so macOS stops it the first time.
+   - Double-click Communication Aid in Applications. macOS says it can't be opened. Click Done (or OK).
+   - Open System Settings > Privacy & Security, scroll down, and click "Open Anyway"
+     next to "Communication Aid was blocked". Enter your Mac password if asked.
+   - Open the app again and click "Open Anyway" (or "Open").
+   You only do this once. If there is no "Open Anyway" button, run this in Terminal instead:
+     xattr -dr com.apple.quarantine "/Applications/Communication Aid.app"
+
+3. Add the Thai voice
+   System Settings > Accessibility > Spoken Content > System Voice > Manage Voices,
+   find Thai and add "Kanya".
+
+4. Install the Tobii Pro Spark driver (separate download from Tobii)
+   - Sign in at https://connect.tobii.com/s/spark-downloads and click Download under macOS
+     (TobiiProSpark_2.2.3.0_x64.dmg).
+   - Open it, double-click "install-driver", type your Mac password at "Password:" and wait for
+     "Runtime Service 2.2.3.0 Installed".
+   - On an Apple silicon Mac, install Rosetta first (Terminal):
+       softwareupdate --install-rosetta --agree-to-license
+   - Plug the Spark straight into the Mac (no hub), or unplug and replug it.
+   - Install Tobii Pro Eye Tracker Manager for macOS from tobii.com and open it: the Spark should
+     be listed. Click it, then Display Setup: enter this screen's size in mm and where the Spark
+     sits, and save.
+
+5. Start Communication Aid
+   - Calibration runs first: follow the dots, then Enter to accept or R to retry.
+   - The first start downloads the English-to-Thai translation model (about 2.5 GB), so keep the
+     Mac on the internet for the first few minutes. The first Speak waits for it; with no
+     internet, Speak says the English instead.
+   - No tracker? The app says so, and "Show Details" explains why. Choose "Use the mouse" to try
+     the app without it.
+
+Keys: F2 calibrate again, F3 settings, Cmd+G gaze dot, F11 full screen, Cmd+Q quit
+(hold fn for F2, F3 and F11).
+
+Settings and logs are in the hidden folder ~/.commu_aid (in Finder: Go > Go to Folder, type
+~/.commu_aid). Send app.log from there when reporting a problem.
+
+Full guide: "Install on a Mac (the app)" in the Commu-Aid-EyeTrack README.
