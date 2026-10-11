@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import sys
 import threading
 import time
 from pathlib import Path
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QLabel, QWidget
 
 from ..config import AppConfig, NeedTile
 from ..dwell import DwellEngine
+from ..gaze.correction import EdgeCorrection, correction_path
 from ..gaze.filters import make_gaze_filter
 from ..gaze.source import GazeSample, GazeSource
 from ..predict import Predictor
@@ -40,6 +42,19 @@ from .settings import SettingsPage
 log = logging.getLogger(__name__)
 
 DATA_DIR = Path("~/.commu_aid").expanduser()
+IS_MAC = sys.platform == "darwin"
+# macOS key codes (kVK_ANSI_*) say which physical key was pressed, whatever input source is on.
+# With the Thai keyboard selected, Qt reports the H key as a Thai letter, so match on these first.
+MAC_KEYS = {
+    0x00: "A", 0x0B: "B", 0x08: "C", 0x02: "D", 0x0E: "E", 0x03: "F", 0x05: "G", 0x04: "H",
+    0x22: "I", 0x26: "J", 0x28: "K", 0x25: "L", 0x2E: "M", 0x2D: "N", 0x1F: "O", 0x23: "P",
+    0x0C: "Q", 0x0F: "R", 0x01: "S", 0x11: "T", 0x20: "U", 0x09: "V", 0x0D: "W", 0x07: "X",
+    0x10: "Y", 0x06: "Z",
+    0x1D: "0", 0x12: "1", 0x13: "2", 0x14: "3", 0x15: "4", 0x17: "5", 0x16: "6", 0x1A: "7",
+    0x1C: "8", 0x19: "9",
+    0x52: "0", 0x53: "1", 0x54: "2", 0x55: "3", 0x56: "4", 0x57: "5", 0x58: "6", 0x59: "7",
+    0x5B: "8", 0x5C: "9",  # keypad
+}
 SETTINGS_HINT_MIN_H = 30  # with a smaller bottom margin there is no room for the hint below the buttons
 
 
@@ -113,7 +128,9 @@ class MainWindow(QGraphicsView):
         self.keyboard_page.hide()
 
         # A quiet hint for the nurse in the strip below the buttons; Settings, Pause and calibration cover it.
-        self.settings_hint = QLabel("Caregiver: press F3 for Settings  (fn + F3 on a Mac)", self.canvas)
+        self.settings_hint = QLabel(
+            "Caregiver: F2 recalibrate    F3 Settings    (hold fn on a Mac: fn + F2, fn + F3)", self.canvas
+        )
         self.settings_hint.setFont(theme.font(22))
         self.settings_hint.setStyleSheet(f"color: {theme.TEXT_QUIET.name()}; background: transparent;")
         self.settings_hint.setAlignment(Qt.AlignCenter)
@@ -135,12 +152,14 @@ class MainWindow(QGraphicsView):
             widget.show()
 
         d = cfg.dwell
-        self.dwell = DwellEngine(d.dwell_time_s, d.blink_grace_s, d.cooldown_s)
+        self.dwell = DwellEngine(d.dwell_time_s, d.blink_grace_s, d.cooldown_s, d.wobble_grace_s)
+        # Resume keeps the short blink grace only, so two short looks never add up to a resume.
         self.resume_dwell = DwellEngine(cfg.pause.resume_dwell_s, d.blink_grace_s, d.cooldown_s)
         self.smoother = make_gaze_filter(
             cfg.gaze_filter, (cfg.display.width, cfg.display.height), reset_after_s=d.blink_grace_s
         )
         self.last_sample: Optional[GazeSample] = None
+        self.correction: Optional[EdgeCorrection] = None  # edge correction from the last accepted calibration
         self.typed = ""
         self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
         self._request_id = 0
@@ -191,9 +210,11 @@ class MainWindow(QGraphicsView):
     def _tick(self) -> None:
         now = time.monotonic()
         for raw in self.source.poll():
-            self.last_sample = self.smoother.add(raw)
             if self.calibration is not None:
-                self.calibration.feed(raw)  # unfiltered: the calibration screen shows and measures every sample
+                self.calibration.feed(raw)  # unfiltered and uncorrected: the calibration screen measures every sample
+            elif self.correction is not None and self.cfg.calibration.edge_correction:
+                raw = self.correction.apply(raw)
+            self.last_sample = self.smoother.add(raw)
 
         if self.calibration is not None or self.settings.isVisible():
             self.gaze_dot.set_point(None)
@@ -216,7 +237,9 @@ class MainWindow(QGraphicsView):
                 if not b.isHidden():
                     pos = b.mapTo(self.canvas, QPoint(0, 0))
                     rects.append((b.key, (pos.x(), pos.y(), b.width(), b.height())))
-            target = pick_target(point.x(), point.y(), rects, self.cfg.display.snap_px)
+            # Not on the rest screen: a glance past the edge must not wake it.
+            outer = 0 if self.paused else self.cfg.display.edge_snap_px
+            target = pick_target(point.x(), point.y(), rects, self.cfg.display.snap_px, outer)
 
         update = engine.update(target, now)
         selected = None
@@ -400,6 +423,8 @@ class MainWindow(QGraphicsView):
         self.calibration = CalibrationScreen(
             self.source, self.map_to_canvas, self.cfg.calibration.auto_accept_max_error_px,
             self.cfg.calibration.redo_point_px, self.canvas, show_live_gaze=self.cfg.calibration.show_live_gaze,
+            edge_correction=self.cfg.calibration.edge_correction,
+            screen_px=(self.cfg.display.width, self.cfg.display.height),
         )
         self.calibration.finished.connect(self._on_calibration_finished)
         self.calibration.show()
@@ -408,8 +433,12 @@ class MainWindow(QGraphicsView):
     def _on_calibration_finished(self, outcome: str) -> None:
         path = self.cfg.calibration.saved_path
         if outcome == "accepted":
+            self.correction = self.calibration.correction
+            started = time.time()
             try:
                 self.source.save_calibration(path)
+                if path.exists() and path.stat().st_mtime >= started - 1:  # not the mouse demo, which saves nothing
+                    self._save_correction(correction_path(path))
             except Exception:
                 log.exception("Could not save calibration")
             self._show_status("Calibration done", note="Look at a button to choose it")
@@ -427,10 +456,20 @@ class MainWindow(QGraphicsView):
         except Exception:
             log.exception("Could not load saved calibration")
             loaded = False
+        self.correction = None
+        if loaded:
+            self.correction = EdgeCorrection.load(correction_path(self.cfg.calibration.saved_path))
         if loaded:
             self._show_status("Using the saved calibration", note="F2 to recalibrate")
         else:
             self._show_status("Not calibrated", note="Press F2 to calibrate", warning=True)
+
+    def _save_correction(self, path: Path) -> None:
+        """Keep the edge correction beside the calibration it was measured with, or drop a stale one."""
+        if self.correction is not None:
+            self.correction.save(path)
+        elif path.exists():
+            path.unlink()
 
     # Settings
 
@@ -450,8 +489,15 @@ class MainWindow(QGraphicsView):
 
     def _apply_settings(self) -> None:
         self.dwell.dwell_time_s = self.cfg.dwell.dwell_time_s
+        self.dwell.wobble_grace_s = self.cfg.dwell.wobble_grace_s
+        c = self.cfg
+        # A new filter starts afresh, so the gaze point jumps straight to where the eyes are.
+        self.smoother = make_gaze_filter(c.gaze_filter, (c.display.width, c.display.height), c.dwell.blink_grace_s)
         self.needs_page.set_needs(self.cfg.needs)
-        self._show_status("Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s")
+        edge = "on" if self.cfg.calibration.edge_correction else "off"
+        self._show_status(
+            "Settings saved", note=f"Dwell time {self.cfg.dwell.dwell_time_s:.1f} s, edge correction {edge}"
+        )
 
     # Caregiver keys
 
@@ -480,9 +526,12 @@ class MainWindow(QGraphicsView):
             return self._on_speak
         if key == Qt.Key_Space:
             return lambda: self._on_letter(" ")
-        if Qt.Key_A <= key <= Qt.Key_Z or Qt.Key_0 <= key <= Qt.Key_9:
+        ch = MAC_KEYS.get(event.nativeVirtualKey()) if IS_MAC else None
+        if ch is None and (Qt.Key_A <= key <= Qt.Key_Z or Qt.Key_0 <= key <= Qt.Key_9):
             ch = chr(key)  # Qt key codes for A-Z and 0-9 are their ASCII codes
+        if ch is not None:
             return lambda: self._on_letter(ch)
+        log.debug("Key not used for typing: key=%#x native=%#x text=%r", key, event.nativeVirtualKey(), event.text())
         return None
 
     def _toggle_gaze_dot(self) -> None:

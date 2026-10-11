@@ -11,7 +11,8 @@ import yaml
 NEEDS_TILE_COUNT = 11
 DWELL_MIN_S = 1.0
 DWELL_MAX_S = 3.0
-DWELL_STEP_S = 0.5  # the Settings slider and its - / + buttons move in these steps
+DWELL_STEP_S = 0.25  # the Settings slider and its - / + buttons move in these steps
+WOBBLE_GRACE_MAX_S = 1.0
 
 
 @dataclass
@@ -19,9 +20,15 @@ class DwellConfig:
     dwell_time_s: float = 3.0
     blink_grace_s: float = 0.3
     cooldown_s: float = 1.0
+    wobble_grace_s: float = 0.5  # gaze may wobble onto another button this long without losing progress
 
 
 GAZE_FILTER_METHODS = ("fixation", "one_euro", "average")
+# Steadiness levels on the Settings page: fixation radius for each, Light to Strong.
+# Buttons are 146 px apart, so the strongest stays below that.
+STEADINESS_RADII_PX = (60, 80, 100, 120, 140)
+STEADINESS_NAMES = ("Light", "Low", "Medium", "High", "Strong")
+STEADINESS_DEFAULT = 3  # High, 120 px
 
 
 @dataclass
@@ -47,6 +54,7 @@ class DisplayConfig:
     side_margin_px: int = 120  # buttons keep this far from the left and right screen edges
     bottom_margin_px: int = 100  # and this far from the bottom edge, nearest the tracker
     snap_px: int = 40  # gaze in a gap or just past the edge counts for the nearest button this close
+    edge_snap_px: int = 150  # gaze outside the whole layout (the edge margins) counts for the nearest button this close
 
 
 @dataclass
@@ -79,6 +87,7 @@ class CalibrationConfig:
     auto_accept_max_error_px: float = 0
     redo_point_px: float = 150  # recollect a calibration point once when its error is above this (0 = never)
     show_live_gaze: bool = True  # draw the gaze live on the calibration screen (G toggles it there)
+    edge_correction: bool = True  # take the gaze error measured at the validation dots back out of live gaze
 
     @property
     def saved_path(self) -> Path:
@@ -157,6 +166,7 @@ def load_config(path: Path | str) -> AppConfig:
         path=path,
     )
     cfg.dwell.dwell_time_s = clamp_dwell(cfg.dwell.dwell_time_s)
+    cfg.dwell.wobble_grace_s = clamp_wobble_grace(cfg.dwell.wobble_grace_s)
     return cfg
 
 
@@ -174,3 +184,12 @@ def _gaze_filter(raw) -> GazeFilterConfig:
 
 def clamp_dwell(seconds: float) -> float:
     return max(DWELL_MIN_S, min(DWELL_MAX_S, float(seconds)))
+
+
+def clamp_wobble_grace(seconds: float) -> float:
+    return max(0.0, min(WOBBLE_GRACE_MAX_S, float(seconds)))
+
+
+def steadiness_level(radius_px: float) -> int:
+    """Settings level whose fixation radius is nearest the given one."""
+    return min(range(len(STEADINESS_RADII_PX)), key=lambda i: abs(STEADINESS_RADII_PX[i] - float(radius_px)))

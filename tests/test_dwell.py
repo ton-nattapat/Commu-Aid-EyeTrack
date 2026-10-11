@@ -87,3 +87,41 @@ def test_changing_dwell_time_applies_immediately():
     e.dwell_time_s = 2.0
     sel, _ = run(e, [("A", 2.2)])
     assert len(sel) == 1
+
+
+def test_wobble_onto_neighbour_keeps_progress():
+    e = DwellEngine(3.0, blink_grace_s=0.3, wobble_grace_s=0.5)
+    sel, _ = run(e, [("A", 1.5), ("B", 0.4), ("A", 1.6)])
+    assert [s[1] for s in sel] == ["A"]
+    assert 3.4 <= sel[0][0] <= 3.6  # 1.5 s + 0.4 s wobble (not counted) + 1.5 s
+
+
+def test_progress_is_held_on_neighbour_during_wobble():
+    e = DwellEngine(3.0, wobble_grace_s=0.5)
+    run(e, [("A", 1.5)])
+    u = e.update("B", 1.5 + 0.2)
+    assert u.target == "A"
+    assert abs(u.progress - 0.5) < 0.02
+
+
+def test_real_move_to_neighbour_counts_from_arrival():
+    e = DwellEngine(3.0, wobble_grace_s=0.5)
+    sel, _ = run(e, [("A", 1.5), ("B", 3.5)])
+    assert [s[1] for s in sel] == ["B"]
+    assert 4.45 <= sel[0][0] <= 4.6  # B selects 3 s after the gaze arrived, not 3 s after the grace
+
+
+def test_wobble_longer_than_grace_resets():
+    sel, _ = run(DwellEngine(3.0, wobble_grace_s=0.5), [("A", 2.0), ("B", 0.7), ("A", 2.0)])
+    assert sel == []
+
+
+def test_wobble_grace_also_covers_gaps():
+    sel, _ = run(DwellEngine(3.0, blink_grace_s=0.3, wobble_grace_s=1.0), [("A", 1.5), (None, 0.8), ("A", 1.6)])
+    assert [s[1] for s in sel] == ["A"]
+
+
+def test_wobble_off_switches_at_once():
+    e = DwellEngine(3.0, wobble_grace_s=0.0)
+    run(e, [("A", 1.5)])
+    assert e.update("B", 1.5 + 1 / 60).target == "B"

@@ -94,8 +94,12 @@ def setup(app, monkeypatch, tmp_path):
 
 def look_at(window, source, button):
     """Point the scripted gaze at the centre of a button."""
-    centre = button.mapTo(window.canvas, button.rect().center())
-    view_pt = window.mapFromScene(QPointF(centre))
+    look_at_canvas(window, source, QPointF(button.mapTo(window.canvas, button.rect().center())))
+
+
+def look_at_canvas(window, source, point):
+    """Point the scripted gaze at a spot on the 1920x1080 canvas."""
+    view_pt = window.mapFromScene(point)
     global_pt = window.mapToGlobal(view_pt)
     geo = window.screen().geometry()
     source.point = ((global_pt.x() - geo.x()) / geo.width(), (global_pt.y() - geo.y()) / geo.height())
@@ -188,38 +192,135 @@ def test_settings_hint_sits_below_the_buttons_and_hides_under_settings(setup):
     make = setup[0]
     w = make()
     hint = w.settings_hint
-    assert hint.isVisible() and "F3" in hint.text()
+    assert hint.isVisible() and "F3" in hint.text() and "F2 recalibrate" in hint.text()
     lowest = max(b.mapTo(w.canvas, b.rect().bottomLeft()).y() for b in w.page.buttons)
     assert hint.geometry().top() > lowest
     w.open_settings()
     assert w.settings.geometry().contains(hint.geometry())
 
 
-def test_settings_slider_is_one_to_three_seconds_in_half_second_steps(setup, tmp_path):
+def test_settings_slider_is_one_to_three_seconds_in_quarter_second_steps(setup, tmp_path):
     make = setup[0]
     w = make()
     w.cfg.path = tmp_path / "config.yaml"
     w.open_settings()
-    assert (w.settings.dwell_slider.minimum(), w.settings.dwell_slider.maximum()) == (2, 6)
-    w.settings.dwell_slider.setValue(2)
+    assert (w.settings.dwell_slider.minimum(), w.settings.dwell_slider.maximum()) == (4, 12)
+    w.settings.dwell_slider.setValue(4)
     assert w.settings.dwell_value.text() == "1.0 s"
     assert not w.settings.dwell_less.isEnabled()
+    w.settings.dwell_more.click()
+    assert w.settings.dwell_value.text() == "1.25 s"
     w.settings.dwell_more.click()
     assert w.settings.dwell_value.text() == "1.5 s"
     w.settings.save()
     assert w.dwell.dwell_time_s == 1.5
 
 
-def test_settings_snaps_an_odd_dwell_time_to_the_nearest_half_second(setup, tmp_path):
+def test_settings_snaps_an_odd_dwell_time_to_the_nearest_quarter_second(setup, tmp_path):
     make = setup[0]
     w = make()
     w.cfg.path = tmp_path / "config.yaml"
     w.cfg.dwell.dwell_time_s = 2.3
     w.open_settings()
-    assert w.settings.dwell_value.text() == "2.5 s"
+    assert w.settings.dwell_value.text() == "2.25 s"
     w.settings.dwell_less.click()
     w.settings.save()
     assert w.dwell.dwell_time_s == 2.0
+
+
+def test_settings_wobble_grace_is_off_to_one_second(setup, tmp_path):
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.open_settings()
+    assert w.settings.wobble_value.text() == "0.5 s"
+    w.settings.wobble_more.click()
+    assert w.settings.wobble_value.text() == "0.75 s"
+    w.settings.wobble_more.click()
+    assert w.settings.wobble_value.text() == "1.0 s"
+    assert not w.settings.wobble_more.isEnabled()
+    for _ in range(4):
+        w.settings.wobble_less.click()
+    assert w.settings.wobble_value.text() == "Off"
+    assert not w.settings.wobble_less.isEnabled()
+    w.settings.wobble_more.click()
+    assert w.settings.wobble_value.text() == "0.25 s"
+    w.settings.save()
+    assert w.dwell.wobble_grace_s == 0.25
+    assert "wobble_grace_s: 0.25" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+
+
+def test_settings_gaze_steadiness_sets_the_fixation_radius(setup, tmp_path):
+    from commu_aid.gaze.filters import FixationFilter
+
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.open_settings()
+    s = w.settings
+    assert s.steady_value.text() == "High" and not s.steady_reset.isEnabled()
+    s.steady_more.click()
+    assert s.steady_value.text() == "Strong" and not s.steady_more.isEnabled()
+    for _ in range(5):
+        s.steady_less.click()
+    assert s.steady_value.text() == "Light" and not s.steady_less.isEnabled()
+    s.steady_more.click()
+    s.save()
+    assert isinstance(w.smoother, FixationFilter) and w.smoother.radius_px == 80
+    assert "fixation_radius_px: 80" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    w.open_settings()
+    assert w.settings.steady_value.text() == "Low"
+    w.settings.steady_reset.click()
+    w.settings.save()
+    assert w.smoother.radius_px == 120
+
+
+def test_settings_keeps_a_hand_tuned_filter_unless_steadiness_changes(setup, tmp_path):
+    from commu_aid.gaze.filters import FixationFilter, OneEuroFilter
+
+    make = setup[0]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.cfg.gaze_filter.fixation_radius_px = 110
+    w.open_settings()
+    assert w.settings.steady_value.text() in ("Medium", "High")
+    w.settings.save()
+    assert w.cfg.gaze_filter.fixation_radius_px == 110
+
+    w.cfg.gaze_filter.method = "one_euro"
+    w.open_settings()
+    assert "one_euro" in w.settings.steady_hint.text()
+    w.settings.save()
+    assert isinstance(w.smoother, OneEuroFilter)
+    w.open_settings()
+    w.settings.steady_more.click()
+    w.settings.save()
+    assert w.cfg.gaze_filter.method == "fixation" and isinstance(w.smoother, FixationFilter)
+
+
+def test_settings_page_shows_every_needs_row(setup):
+    make = setup[0]
+    w = make()
+    w.open_settings()
+    table = w.settings.table
+    rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
+    assert rows <= table.viewport().height()
+    assert not table.verticalScrollBar().isVisible()
+
+
+def test_wobble_onto_neighbour_key_keeps_progress(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    a, b = button(w.keyboard_page, ("key", "A")), button(w.keyboard_page, ("key", "S"))
+    look_at(w, source, a)
+    dwell(w, clock, app, 2.0)
+    look_at(w, source, b)
+    dwell(w, clock, app, 0.3)
+    assert b.progress == 0.0 and a.progress > 0.6
+    look_at(w, source, a)
+    dwell(w, clock, app, 1.1)
+    assert w.typed.lower() == "a"  # 2.0 s + 1.1 s on A reaches the 3 s dwell; the wobble did not reset it
 
 
 def test_settings_save_changes_dwell_and_tiles(setup, app, tmp_path):
@@ -227,7 +328,7 @@ def test_settings_save_changes_dwell_and_tiles(setup, app, tmp_path):
     w = make()
     w.cfg.path = tmp_path / "config.yaml"
     w.open_settings()
-    w.settings.dwell_slider.setValue(4)
+    w.settings.dwell_slider.setValue(8)
     w.settings.table.item(0, 1).setText("Water")
     w.settings.save()
     assert w.dwell.dwell_time_s == 2.0
@@ -447,6 +548,20 @@ def test_glance_at_resume_does_not_wake(setup, app):
     assert w.paused  # two short looks never add up to the full resume dwell
 
 
+def test_glance_at_resume_does_not_wake_with_long_wobble_grace(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.cfg.dwell.wobble_grace_s = w.dwell.wobble_grace_s = 1.0
+    w.pause()
+    look_at(w, source, w.pause_screen.resume_button)
+    dwell(w, clock, app, 2.0)
+    source.point = None
+    dwell(w, clock, app, 1.0)
+    look_at(w, source, w.pause_screen.resume_button)
+    dwell(w, clock, app, 2.5)
+    assert w.paused  # Resume keeps the short blink grace, so the 1 s gap still resets it
+
+
 def test_caregiver_key_toggles_pause(setup):
     w = setup[0]()
     w.toggle_pause()
@@ -513,6 +628,91 @@ def test_keyboard_layout_columns_and_word_row(setup):
     assert len(words) == 6 and len({b.y() for b in words}) == 1
 
 
+def test_gaze_in_the_side_margin_still_selects_the_edge_key(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    delete = button(w.keyboard_page, "delete")
+    edge = delete.mapTo(w.canvas, QPoint(delete.width() + 100, delete.height() // 2))
+    look_at_canvas(w, source, QPointF(edge))  # 100 px right of the key, in the margin
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "H"
+
+
+def test_edge_correction_moves_the_gaze_back_onto_the_key(setup, app):
+    from commu_aid.gaze.correction import EdgeCorrection
+
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    space = button(w.keyboard_page, "space")
+    look_at(w, source, space)
+    x, y = source.point
+    # The gaze lands a whole key above Space, on the letter row.
+    look_at_canvas(w, source, QPointF(space.mapTo(w.canvas, space.rect().center())) - QPointF(0, 146))
+    miss = source.point[1] - y
+    dwell(w, clock, app, 3.2)
+    assert w.typed.startswith("HI") and w.typed[2:].isalpha()  # without correction: a letter
+
+    w.typed = "HI"
+    grid = [(gx, gy) for gy in (0.12, 0.5, 0.88) for gx in (0.08, 0.5, 0.92)]
+    w.correction = EdgeCorrection.from_misses([((gx, gy), (gx, gy + miss)) for gx, gy in grid])
+    w.dwell.reset()
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "HI "
+
+
+class CalibratingGaze(ScriptedGaze):
+    def save_calibration(self, path):
+        path.write_bytes(b"calibration")
+
+    def load_calibration(self, path):
+        return path.exists()
+
+
+class FinishedCalibration:
+    def __init__(self, correction):
+        self.correction = correction
+
+    def hide(self):
+        pass
+
+    def deleteLater(self):
+        pass
+
+
+def test_edge_correction_is_saved_with_the_calibration_and_loaded_on_skip(setup, app, tmp_path):
+    from commu_aid.gaze.correction import EdgeCorrection
+
+    make, clock, _, _, _ = setup
+    w = make()
+    w.source = CalibratingGaze(clock)
+    w.cfg.calibration.saved_file = str(tmp_path / "calibration.bin")
+    grid = [(gx, gy) for gy in (0.12, 0.5, 0.88) for gx in (0.08, 0.5, 0.92)]
+    correction = EdgeCorrection.from_misses([((gx, gy), (gx + 0.01, gy)) for gx, gy in grid])
+    w.calibration = FinishedCalibration(correction)
+    w._on_calibration_finished("accepted")
+    assert (tmp_path / "calibration.edge.json").exists()
+
+    w.correction = None
+    w.calibration = FinishedCalibration(None)
+    w._on_calibration_finished("skipped")
+    assert w.correction == correction
+
+
+def test_glance_past_the_edge_does_not_wake_the_rest_screen(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.pause()
+    resume = w.pause_screen.resume_button
+    above = resume.mapTo(w.canvas, QPoint(resume.width() // 2, -100))
+    look_at_canvas(w, source, QPointF(above))  # above Resume, outside every button
+    dwell(w, clock, app, w.cfg.pause.resume_dwell_s + 0.5)
+    assert w.paused
+
+
 def press(w, key, mods=None, text=""):
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QKeyEvent
@@ -566,3 +766,52 @@ def test_caregiver_keys_ignored_on_rest_screen_and_settings_and_with_ctrl(setup,
     press(w, Qt.Key_C, Qt.ControlModifier)
     assert w.typed == ""
     assert w.page is w.needs_page
+
+
+def test_mac_keys_type_letters_even_with_the_thai_keyboard_selected(setup, app, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    monkeypatch.setattr(main_window, "IS_MAC", True)
+    w = setup[0]()
+    # Thai Kedmanee: the H key gives "้" and the 1 key gives "ๅ"; Qt reports those, not Key_H / Key_1.
+    for native, thai in ((0x04, "้"), (0x22, "ร"), (0x12, "ๅ")):
+        w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, ord(thai), Qt.NoModifier, 0, native, 0, thai))
+    assert w.typed == "HI1"
+
+
+def test_settings_turn_edge_correction_off_and_on_without_recalibrating(setup, app, tmp_path):
+    from commu_aid.gaze.correction import EdgeCorrection
+
+    make, clock, source, _, _ = setup
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.show_page(w.keyboard_page)
+    w.typed = "HI"
+    space = button(w.keyboard_page, "space")
+    look_at(w, source, space)
+    y = source.point[1]
+    # The gaze lands a whole key above Space; the correction learned at calibration undoes that.
+    look_at_canvas(w, source, QPointF(space.mapTo(w.canvas, space.rect().center())) - QPointF(0, 146))
+    miss = source.point[1] - y
+    grid = [(gx, gy) for gy in (0.12, 0.5, 0.88) for gx in (0.08, 0.5, 0.92)]
+    w.correction = EdgeCorrection.from_misses([((gx, gy), (gx, gy + miss)) for gx, gy in grid])
+
+    w.open_settings()
+    assert w.settings.edge_toggle.isChecked() and w.settings.edge_toggle.text() == "Edge correction: On"
+    w.settings.edge_toggle.click()
+    assert w.settings.edge_toggle.text() == "Edge correction: Off"
+    w.settings.save()
+    assert w.cfg.calibration.edge_correction is False
+    assert "edge_correction: false" in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    w.dwell.reset()
+    dwell(w, clock, app, 3.2)
+    assert w.typed[2:].isalpha()  # off: the raw gaze picks the letter above
+
+    w.typed = "HI"
+    w.open_settings()
+    w.settings.edge_toggle.click()
+    w.settings.save()
+    w.dwell.reset()
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "HI "  # on again: Space, with no new calibration
