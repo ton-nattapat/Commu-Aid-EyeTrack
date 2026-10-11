@@ -43,7 +43,7 @@ CAPITALISED_OK = {
     "ok", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
     "january", "february", "march", "april", "may", "june", "july", "august", "september",
     "october", "november", "december", "english", "thai", "thailand", "christmas", "god",
-    "mr", "mrs", "ms", "dr", "tv", "internet",
+    "mr", "mrs", "ms", "dr", "tv", "internet", "yeah", "im", "ive", "ill", "id",
 }
 
 _TOKEN = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)*")
@@ -77,7 +77,8 @@ def count(lines: Iterable[str]):
         low = [t.lower() for t in toks]
         words.update(low)
         pairs.update(zip([START] + low, low))
-    names = {w for w, c in capitalised.items() if c > lower[w] and w not in CAPITALISED_OK and w != "i"}
+    # A name is written with a capital almost every time it appears mid-sentence.
+    names = {w for w, c in capitalised.items() if c > 3 * lower[w] and w not in CAPITALISED_OK and w != "i"}
     return words, pairs, names
 
 

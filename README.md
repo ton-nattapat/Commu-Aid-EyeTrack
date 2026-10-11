@@ -10,8 +10,10 @@ in 0.25 s steps) to choose it. The app shows the English text and speaks it in T
 - **Page 2, Keyboard:** a number row above the QWERTY letters, with Space after M. Tall Yes and No
   buttons down the left speak "ใช่" / "ไม่ใช่" at once and leave the typed text alone; a tall Delete
   and Clear sit down the right. Six word buttons above the numbers predict the word being typed
-  (or the next word); choosing one finishes the word and adds a space. Prediction is offline and
-  learns from every message the patient speaks.
+  (or the next word); choosing one finishes the word and adds a space. The six are always six
+  different words (HEAR, not HEAR and HEARD), everyday spoken words come first, and the next-word
+  guesses come from short everyday sentences. Prediction is offline and learns from every message
+  the patient speaks.
   Speak and Needs sit at the top beside Pause. Speak translates the typed English to Thai offline
   (Meta NLLB-200) and speaks the Thai.
 - **Calibration** runs every time the app starts: position check, 9-point calibration (corners,
@@ -439,8 +441,9 @@ Tobii Pro Spark ─▶ Gaze source ─▶ Edge correction ─▶ Gaze filter ─
 | `commu_aid/ui/pause_screen.py` | Rest screen with the long-dwell Resume button |
 | `commu_aid/ui/calibration.py` | Start-up calibration: position check with face outline, live gaze, result plots |
 | `commu_aid/ui/settings.py` | Caregiver settings (dwell slider in 0.25 s steps, wobble grace, gaze steadiness, edge correction, Needs tiles) |
-| `commu_aid/predict.py` | Offline word prediction (10,000 common words, care words, learning) |
-| `commu_aid/data/` | Word lists for prediction (`english_words.txt`, `care_words.txt`) |
+| `commu_aid/predict.py` | Offline word prediction (10,000 common words, next-word table, care words, learning) |
+| `tools/build_word_data.py` | Rebuilds `english_words.txt` and `next_words.json` from Tatoeba's English sentences |
+| `commu_aid/data/` | Word lists for prediction (`english_words.txt`, `next_words.json`, `care_words.txt`) |
 | `commu_aid/speech.py` | Offline text-to-speech (`say` on macOS, pyttsx3 elsewhere) |
 | `commu_aid/sounds.py` | Click and caregiver-alarm sounds, generated on first run |
 | `commu_aid/translate.py` | Offline English to Thai with NLLB-200 |

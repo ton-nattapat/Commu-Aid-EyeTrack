@@ -1,6 +1,6 @@
 # Word prediction v2: six better, less repetitive suggestions
 
-Status: items 1, 2 and 5 are built. Items 3 and 4 need the Tatoeba data, which `tools/build_word_data.py` generates once the file can be downloaded.
+Status: built. The data files were generated with `tools/build_word_data.py` from Tatoeba's eng_sentences.tsv.bz2 (downloaded 2026-10-11) blended with wordfreq 3.1.1.
 
 ## What the patient sees today
 

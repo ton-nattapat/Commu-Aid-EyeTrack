@@ -84,3 +84,12 @@ def test_bad_learned_file_is_ignored(tmp_path):
     path = tmp_path / "words.json"
     path.write_text("not json", encoding="utf-8")
     assert Predictor(path).suggest("WAT")[0] == "WATER"
+
+
+def test_shipped_data_favours_everyday_words():
+    p = Predictor()
+    assert p.suggest("CAN ")[0] == "YOU"
+    assert "HEAR" in p.suggest("HEA") and "HEARD" not in p.suggest("HEA")
+    assert p.suggest("GO")[0] == "GOING"
+    assert not {"TOM", "MARY", "WANG"} & set(p.rank)  # names from the sentences are left out
+    assert "YEAH" in p.rank and "DONT" in p.rank

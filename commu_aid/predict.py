@@ -81,7 +81,7 @@ def word_family(word: str) -> FrozenSet[str]:
     if w.endswith("ES") and w[:-2].endswith(("S", "X", "Z", "CH", "SH")) and len(w) > 4:
         return frozenset([w[:-2], w[:-1]])  # BOX(ES), HOUS(ES)
     if w.endswith("S") and not w.endswith(("SS", "US", "IS")) and len(w) > 3:
-        return frozenset([w[:-1]])
+        return word_family(w[:-1]) | {w[:-1]}  # PAINTINGS matches PAINTING and PAINT
     return frozenset([w])
 
 
@@ -160,7 +160,27 @@ class Predictor:
                 pool.append(w)
             if len(pool) >= n * 4:
                 break
-        return sorted(_distinct(sorted(pool, key=score), n), key=score)
+        pool.sort(key=score)
+
+        # Group the forms of each word. Unless the patient has used a form himself, offer the
+        # shortest one (HEAR rather than HEARD), which is usually the plain form. When the plain
+        # form is what is already typed (GO), offer the most common other form (GOING).
+        groups: List[List[str]] = []
+        for w in pool:
+            for g in groups:
+                if any(word_family(w) & word_family(x) for x in g):
+                    g.append(w)
+                    break
+            else:
+                groups.append([w])
+        picks = []
+        for g in groups[:n]:
+            used = [w for w in g if self.used[w]]
+            if used or word_family(g[0]) & word_family(prefix):
+                picks.append(g[0])
+            else:
+                picks.append(min(g, key=lambda w: (len(w), score(w))))
+        return picks
 
     def _next(self, prev: str, n: int) -> List[str]:
         followers = [(c, pair.split(" ", 1)[1]) for pair, c in self.pairs.items() if pair.startswith(prev + " ")]
