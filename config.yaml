@@ -43,9 +43,10 @@ translation:
 
 speech:
   engine: auto             # auto (macOS: say, others: pyttsx3), say, pyttsx3, none
-  voice_th: Kanya          # macOS Thai voice; on Windows, a voice name containing this text is used
+  voice_th: Kanya          # macOS Thai voice, or "system" for the Mac's System Voice (Accessibility > Spoken Content),
+                           # which is how a Siri voice is used; on Windows, a voice name containing this text is used
   voice_en: Samantha
-  rate: 170                # words per minute
+  rate: 200                # words per minute, 120 to 300; Settings (F3) changes it in steps of 20
 
 calibration:
   on_startup: true                 # run calibration every time the app starts

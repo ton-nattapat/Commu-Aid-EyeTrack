@@ -31,7 +31,8 @@ in 0.25 s steps) to choose it. The app shows the English text and speaks it in T
   (4 s by default, `pause.resume_dwell_s`) and fills a ring as it counts. F4 pauses and resumes too.
 - **Settings (F3)** let the caregiver change the dwell time (1 to 3 s, in 0.25 s steps, with a large
   slider and big − / + buttons), the wobble grace, the gaze steadiness (Light to Strong, default
-  High), switch the edge correction on or off, and edit the Needs tiles. Changes apply on Save,
+  High), the speech speed (120 to 300 words a minute) and the Thai voice (‹ / › buttons and a Try voice button),
+  switch the edge correction on or off, and edit the Needs tiles. Changes apply on Save,
   without a restart.
   A small line at the bottom of the Needs and Keyboard pages reminds the nurse of F2 (recalibrate)
   and F3 (Settings), with fn on a Mac.
@@ -232,6 +233,12 @@ monitor's size and position. The app's layout is fixed at 1920x1080.
 For the Thai voice: System Settings > Accessibility > Spoken Content > System Voice >
 Manage Voices, and add **Kanya** (Thai).
 
+Every Thai voice installed on the Mac shows up under **Thai voice** in Settings (F3). Siri voices
+can't be picked by name, so to use one (for example a male Thai voice, where the Mac offers one),
+choose it as the Mac's System Voice in Accessibility > Spoken Content, then pick **System voice**
+in the app's Settings. Use a Thai System Voice for this, or Thai words are read with an English
+voice.
+
 The first time Speak is used, the translation model downloads from Hugging Face
 (about 2.5 GB) and is cached after that, so the first run needs internet.
 
@@ -349,7 +356,7 @@ Caregiver keys:
 | Key | Action |
 | --- | --- |
 | F2 | Calibrate again |
-| F3 | Settings (dwell time, wobble grace, gaze steadiness, edge correction, Needs tiles) |
+| F3 | Settings (dwell time, wobble grace, gaze steadiness, edge correction, speech speed, Thai voice, Needs tiles) |
 | F4 | Pause or resume |
 | Ctrl+G (Cmd+G on a Mac) | Show or hide the gaze dot |
 | F11 | Full screen on or off |

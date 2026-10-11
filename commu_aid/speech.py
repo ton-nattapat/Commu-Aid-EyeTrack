@@ -3,6 +3,9 @@
 macOS uses the built-in `say` command (Thai voice: Kanya); other systems use pyttsx3 with
 whatever voices the operating system has installed. Speech runs on a worker thread, and a new
 message interrupts one still being spoken.
+
+Siri voices cannot be named to `say`; the voice "system" leaves the name out, so `say` speaks
+with the Mac's System Voice, which can be a Siri voice.
 """
 
 from __future__ import annotations
@@ -10,12 +13,13 @@ from __future__ import annotations
 import logging
 import platform
 import queue
+import re
 import shutil
 import subprocess
 import threading
-from typing import Optional
+from typing import List, Optional
 
-from .config import SpeechConfig
+from .config import SYSTEM_VOICE, SpeechConfig
 
 log = logging.getLogger(__name__)
 
@@ -42,14 +46,34 @@ class Speaker:
         if not text or self.engine == "none":
             return
         self._interrupt()
-        self._queue.put((text, lang))
+        # Voice and rate are read now, so a Settings change applies to the next message.
+        self._queue.put((text, lang, self._voice_for(lang), self.cfg.rate))
+
+    def preview(self, text: str, lang: str, voice: str, rate: int) -> None:
+        """Speak with a voice and rate not saved yet (the Settings page's Try button)."""
+        if self.engine == "none":
+            return
+        self._interrupt()
+        self._queue.put((text, lang, "" if voice == SYSTEM_VOICE else voice, rate))
+
+    def voices(self, lang: str) -> List[str]:
+        """Names of the installed voices for a language, for the Settings page."""
+        if self.engine != "say":
+            return []
+        try:
+            out = subprocess.run(["say", "-v", "?"], capture_output=True, text=True, timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            log.exception("Could not list voices")
+            return []
+        return parse_say_voices(out, lang)
 
     def close(self) -> None:
         self._interrupt()
         self._queue.put(None)
 
     def _voice_for(self, lang: str) -> str:
-        return self.cfg.voice_th if lang == "th" else self.cfg.voice_en
+        voice = self.cfg.voice_th if lang == "th" else self.cfg.voice_en
+        return "" if voice == SYSTEM_VOICE else voice
 
     def _interrupt(self) -> None:
         # Drop anything not yet spoken, and stop what is speaking now.
@@ -68,11 +92,10 @@ class Speaker:
             item = self._queue.get()
             if item is None:
                 return
-            text, lang = item
+            text, lang, voice, rate = item
             try:
                 if self.engine == "say":
-                    cmd = ["say", "-r", str(self.cfg.rate)]
-                    voice = self._voice_for(lang)
+                    cmd = ["say", "-r", str(rate)]
                     if voice:
                         cmd += ["-v", voice]
                     self._proc = subprocess.Popen(cmd + [text])
@@ -82,14 +105,27 @@ class Speaker:
                         import pyttsx3
 
                         tts = pyttsx3.init()
-                        tts.setProperty("rate", self.cfg.rate)
-                    voice_id = _find_pyttsx3_voice(tts, self._voice_for(lang), lang)
+                    tts.setProperty("rate", rate)
+                    voice_id = _find_pyttsx3_voice(tts, voice, lang)
                     if voice_id:
                         tts.setProperty("voice", voice_id)
                     tts.say(text)
                     tts.runAndWait()
             except Exception:
                 log.exception("Speech failed for %r", text)
+
+
+# One line of `say -v ?`: name (may hold spaces and brackets), locale, then "# sample text".
+_SAY_VOICE_LINE = re.compile(r"^(?P<name>.+?)\s+(?P<locale>[a-z]{2,3}[_-][A-Za-z0-9_-]+)\s+#")
+
+
+def parse_say_voices(listing: str, lang: str) -> List[str]:
+    names = []
+    for line in listing.splitlines():
+        m = _SAY_VOICE_LINE.match(line)
+        if m and m.group("locale").split("_")[0].split("-")[0] == lang and m.group("name") not in names:
+            names.append(m.group("name"))
+    return names
 
 
 def _find_pyttsx3_voice(tts, name: str, lang: str) -> Optional[str]:

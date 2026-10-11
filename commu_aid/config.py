@@ -13,6 +13,10 @@ DWELL_MIN_S = 1.0
 DWELL_MAX_S = 3.0
 DWELL_STEP_S = 0.25  # the Settings slider and its - / + buttons move in these steps
 WOBBLE_GRACE_MAX_S = 1.0
+SPEECH_RATE_MIN = 120  # words per minute
+SPEECH_RATE_MAX = 300
+SPEECH_RATE_STEP = 20  # the Settings - / + buttons move in these steps
+SYSTEM_VOICE = "system"  # speak with the Mac's System Voice (Accessibility > Spoken Content), e.g. a Siri voice
 
 
 @dataclass
@@ -76,9 +80,9 @@ class TranslationConfig:
 @dataclass
 class SpeechConfig:
     engine: str = "auto"
-    voice_th: str = "Kanya"
+    voice_th: str = "Kanya"  # a voice name, or "system" for the Mac's System Voice
     voice_en: str = "Samantha"
-    rate: int = 170
+    rate: int = 200  # words per minute
 
 
 @dataclass
@@ -168,6 +172,7 @@ def load_config(path: Path | str) -> AppConfig:
     )
     cfg.dwell.dwell_time_s = clamp_dwell(cfg.dwell.dwell_time_s)
     cfg.dwell.wobble_grace_s = clamp_wobble_grace(cfg.dwell.wobble_grace_s)
+    cfg.speech.rate = clamp_speech_rate(cfg.speech.rate)
     return cfg
 
 
@@ -189,6 +194,10 @@ def clamp_dwell(seconds: float) -> float:
 
 def clamp_wobble_grace(seconds: float) -> float:
     return max(0.0, min(WOBBLE_GRACE_MAX_S, float(seconds)))
+
+
+def clamp_speech_rate(rate: float) -> int:
+    return max(SPEECH_RATE_MIN, min(SPEECH_RATE_MAX, int(round(float(rate)))))
 
 
 def steadiness_level(radius_px: float) -> int:
