@@ -138,7 +138,7 @@ class MainWindow(QGraphicsView):
         self.settings_hint.setGeometry(0, hint_top, theme.CANVAS_W, theme.CANVAS_H - hint_top)
         self.settings_hint.setVisible(theme.CANVAS_H - hint_top >= SETTINGS_HINT_MIN_H)
 
-        self.settings = SettingsPage(cfg, self._apply_settings, self.close_settings, self.canvas)
+        self.settings = SettingsPage(cfg, self._apply_settings, self.close_settings, self.canvas, speaker)
         self.settings.hide()
         self.calibration: Optional[CalibrationScreen] = None
         self.pause_screen = PauseScreen(self.resume, cfg.pause.resume_dwell_s, self.canvas)

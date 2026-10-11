@@ -1,11 +1,12 @@
-"""Caregiver Settings page (F3): dwell time, gaze steadiness, edge correction and the Needs tiles.
+"""Caregiver Settings page (F3): dwell time, gaze steadiness, edge correction, speech speed and
+Thai voice, and the Needs tiles.
 
 Everything is saved to config.yaml.
 """
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter
@@ -27,16 +28,22 @@ from ..config import (
     DWELL_MIN_S,
     DWELL_STEP_S,
     NEEDS_TILE_COUNT,
+    SPEECH_RATE_MAX,
+    SPEECH_RATE_MIN,
+    SPEECH_RATE_STEP,
     STEADINESS_DEFAULT,
     STEADINESS_NAMES,
     STEADINESS_RADII_PX,
+    SYSTEM_VOICE,
     WOBBLE_GRACE_MAX_S,
     AppConfig,
     NeedTile,
     clamp_dwell,
+    clamp_speech_rate,
     clamp_wobble_grace,
     steadiness_level,
 )
+from ..speech import Speaker
 from . import theme
 
 STYLE = """
@@ -44,6 +51,7 @@ QWidget#settings { background: #101418; }
 QLabel { color: #f4f6f8; }
 QTableWidget { background: #1e252d; color: #f4f6f8; gridline-color: #3a4652; font-size: 26px; }
 QHeaderView::section { background: #24324a; color: #f4f6f8; font-size: 24px; padding: 8px; border: none; }
+QComboBox#voice { font-size: 28px; padding: 14px 20px; border: 2px solid #3a4652; border-radius: 16px; }
 QComboBox { font-size: 24px; background: #24324a; color: #f4f6f8; border: none; padding: 4px 12px; }
 QComboBox QAbstractItemView { background: #24324a; color: #f4f6f8; selection-background-color: #3a4652; }
 QPushButton { font-size: 28px; font-weight: bold; padding: 14px 40px;
@@ -61,6 +69,7 @@ QSlider::handle:horizontal { width: 44px; height: 44px; margin: -18px 0; border-
 SLIDER_HANDLE = 56  # px, QSlider::handle width plus its border above
 STEP_BUTTON = 110  # theme.MIN_TARGET
 LABEL_W = 300  # row labels share one width so the - / + buttons line up
+TRY_TEXT = "สวัสดีครับ ผมหิวน้ำครับ"  # spoken by the Try voice button
 
 
 def seconds_text(seconds: float) -> str:
@@ -93,9 +102,17 @@ class SliderTicks(QWidget):
 
 
 class SettingsPage(QWidget):
-    def __init__(self, cfg: AppConfig, on_saved: Callable[[], None], on_closed: Callable[[], None], parent=None):
+    def __init__(
+        self,
+        cfg: AppConfig,
+        on_saved: Callable[[], None],
+        on_closed: Callable[[], None],
+        parent=None,
+        speaker: Optional[Speaker] = None,
+    ):
         super().__init__(parent)
         self.cfg = cfg
+        self.speaker = speaker
         self.on_saved = on_saved
         self.on_closed = on_closed
         self.setObjectName("settings")
@@ -104,8 +121,8 @@ class SettingsPage(QWidget):
         self.setGeometry(0, 0, theme.CANVAS_W, theme.CANVAS_H)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(theme.MARGIN, 16, theme.MARGIN, 16)
-        layout.setSpacing(12)
+        layout.setContentsMargins(theme.MARGIN, 8, theme.MARGIN, 8)
+        layout.setSpacing(8)
 
         # The buttons share the title row, leaving room for all 11 Needs rows below the controls.
         title_row = QHBoxLayout()
@@ -210,8 +227,39 @@ class SettingsPage(QWidget):
         steady_row.addWidget(self.steady_reset)
         layout.addLayout(steady_row)
 
+        # Speech: how fast the app speaks, and which Thai voice. "System voice" speaks with the
+        # Mac's System Voice, the only way to use a Siri voice from the app.
+        speech_row = QHBoxLayout()
+        speech_row.setSpacing(theme.GAP)
+        rate_label = QLabel("Speech speed")
+        rate_label.setFont(theme.font(32, bold=True))
+        rate_label.setMinimumWidth(LABEL_W)
+        self.rate = 0
+        self.rate_less = self._button("\u2212", lambda: self._set_rate(self.rate - SPEECH_RATE_STEP))
+        self.rate_more = self._button("+", lambda: self._set_rate(self.rate + SPEECH_RATE_STEP))
+        self.rate_value = QLabel()
+        self.rate_value.setFont(theme.font(40, bold=True))
+        self.rate_value.setMinimumWidth(200)
+        self.rate_value.setAlignment(Qt.AlignCenter)
+        voice_label = QLabel("Thai voice")
+        voice_label.setFont(theme.font(32, bold=True))
+        self.voice = QComboBox()
+        self.voice.setObjectName("voice")
+        self.voice.setMinimumWidth(420)
+        self.try_voice = QPushButton("Try voice")
+        self.try_voice.clicked.connect(self._try_voice)
+        speech_row.addWidget(rate_label)
+        speech_row.addWidget(self.rate_less)
+        speech_row.addWidget(self.rate_value)
+        speech_row.addWidget(self.rate_more)
+        speech_row.addStretch(1)
+        speech_row.addWidget(voice_label)
+        speech_row.addWidget(self.voice)
+        speech_row.addWidget(self.try_voice)
+        layout.addLayout(speech_row)
+
         tiles_label = QLabel("Needs tiles (the 12th tile always opens the keyboard)")
-        tiles_label.setFont(theme.font(32, bold=True))
+        tiles_label.setFont(theme.font(26, bold=True))
         layout.addWidget(tiles_label)
 
         self.table = QTableWidget(NEEDS_TILE_COUNT, 4)
@@ -223,7 +271,7 @@ class SettingsPage(QWidget):
         header.setSectionResizeMode(3, QHeaderView.Fixed)
         self.table.setColumnWidth(0, 120)
         self.table.setColumnWidth(3, 220)
-        self.table.verticalHeader().setDefaultSectionSize(44)  # all 11 rows fit under the three control rows
+        self.table.verticalHeader().setDefaultSectionSize(38)  # all 11 rows fit under the four control rows
         layout.addWidget(self.table, 1)
 
     def load(self) -> None:
@@ -234,6 +282,8 @@ class SettingsPage(QWidget):
         self._set_steadiness(self.loaded_steady_level)
         self.edge_toggle.setChecked(self.cfg.calibration.edge_correction)
         self._show_edge(self.edge_toggle.isChecked())
+        self._set_rate(self.cfg.speech.rate)
+        self._load_voices()
         for row in range(NEEDS_TILE_COUNT):
             tile = self.cfg.needs[row] if row < len(self.cfg.needs) else NeedTile("", "")
             for col, value in enumerate((tile.icon, tile.label, tile.thai)):
@@ -252,6 +302,8 @@ class SettingsPage(QWidget):
             self.cfg.gaze_filter.method = "fixation"
             self.cfg.gaze_filter.fixation_radius_px = STEADINESS_RADII_PX[self.steady_level]
         self.cfg.calibration.edge_correction = self.edge_toggle.isChecked()
+        self.cfg.speech.rate = self.rate
+        self.cfg.speech.voice_th = self.voice.currentData()
         needs = []
         for row in range(NEEDS_TILE_COUNT):
             icon, label, thai = (self._text(row, c) for c in range(3))
@@ -294,6 +346,29 @@ class SettingsPage(QWidget):
             method = self.cfg.gaze_filter.method
             hint = f"config.yaml uses the {method} filter; changing this switches to the steady one."
         self.steady_hint.setText(hint)
+
+    def _set_rate(self, rate: int) -> None:
+        self.rate = clamp_speech_rate(rate)
+        self.rate_value.setText(f"{self.rate} wpm")
+        self.rate_less.setEnabled(self.rate > SPEECH_RATE_MIN)
+        self.rate_more.setEnabled(self.rate < SPEECH_RATE_MAX)
+
+    def _load_voices(self) -> None:
+        """System voice first, then the Mac's installed Thai voices, keeping the saved one even if it
+        is not installed (yet)."""
+        names = self.speaker.voices("th") if self.speaker is not None else []
+        current = self.cfg.speech.voice_th or SYSTEM_VOICE
+        if current != SYSTEM_VOICE and current not in names:
+            names.append(current)
+        self.voice.clear()
+        self.voice.addItem("System voice", SYSTEM_VOICE)
+        for name in names:
+            self.voice.addItem(name, name)
+        self.voice.setCurrentIndex(max(0, self.voice.findData(current)))
+
+    def _try_voice(self) -> None:
+        if self.speaker is not None:
+            self.speaker.preview(TRY_TEXT, "th", self.voice.currentData(), self.rate)
 
     def _show_dwell(self, steps: int) -> None:
         self.dwell_value.setText(f"{seconds_text(steps * DWELL_STEP_S)} s")

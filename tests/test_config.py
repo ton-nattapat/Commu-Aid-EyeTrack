@@ -77,3 +77,11 @@ def test_packaged_app_keeps_its_config_in_the_user_folder(tmp_path):
     path.write_text("dwell:\n  dwell_time_s: 1.5\n", encoding="utf-8")
     assert default_config_path(frozen=True, bundled=bundled, user_dir=user_dir) == path
     assert load_config(path).dwell.dwell_time_s == 1.5
+
+
+def test_speech_rate_is_clamped(tmp_path):
+    p = tmp_path / "c.yaml"
+    p.write_text("speech: {rate: 900}\n", encoding="utf-8")
+    assert load_config(p).speech.rate == 300
+    p.write_text("speech: {rate: 50}\n", encoding="utf-8")
+    assert load_config(p).speech.rate == 120

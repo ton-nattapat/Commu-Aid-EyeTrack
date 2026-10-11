@@ -39,9 +39,17 @@ class ScriptedGaze(GazeSource):
 class FakeSpeaker:
     def __init__(self):
         self.spoken = []
+        self.previews = []
+        self.installed = ["Kanya", "Kanya (Enhanced)"]
 
     def speak(self, text, lang):
         self.spoken.append((text, lang))
+
+    def preview(self, text, lang, voice, rate):
+        self.previews.append((voice, rate))
+
+    def voices(self, lang):
+        return list(self.installed) if lang == "th" else []
 
     def close(self):
         pass
@@ -307,6 +315,39 @@ def test_settings_gaze_steadiness_sets_the_fixation_radius(setup, tmp_path):
     w.settings.steady_reset.click()
     w.settings.save()
     assert w.smoother.radius_px == 120
+
+
+def test_settings_speech_speed_and_thai_voice(setup, tmp_path):
+    make, speaker = setup[0], setup[3]
+    w = make()
+    w.cfg.path = tmp_path / "config.yaml"
+    w.open_settings()
+    s = w.settings
+    assert s.rate_value.text() == "200 wpm"
+    assert [s.voice.itemText(i) for i in range(s.voice.count())] == ["System voice", "Kanya", "Kanya (Enhanced)"]
+    assert s.voice.currentText() == "Kanya"
+    for _ in range(10):
+        s.rate_more.click()
+    assert s.rate_value.text() == "300 wpm" and not s.rate_more.isEnabled()
+    s.rate_less.click()
+    s.voice.setCurrentIndex(0)
+    s.try_voice.click()
+    assert speaker.previews == [("system", 280)]
+    s.save()
+    assert (w.cfg.speech.rate, w.cfg.speech.voice_th) == (280, "system")
+    saved = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    assert "rate: 280" in saved and "voice_th: system" in saved
+    w.open_settings()
+    assert w.settings.voice.currentText() == "System voice" and w.settings.rate_value.text() == "280 wpm"
+
+
+def test_settings_keeps_a_saved_voice_that_is_not_installed(setup):
+    make, speaker = setup[0], setup[3]
+    speaker.installed = []
+    w = make()
+    w.cfg.speech.voice_th = "Some Male Voice"
+    w.open_settings()
+    assert w.settings.voice.currentText() == "Some Male Voice"
 
 
 def test_settings_keeps_a_hand_tuned_filter_unless_steadiness_changes(setup, tmp_path):
