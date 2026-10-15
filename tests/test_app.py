@@ -899,3 +899,15 @@ def test_settings_turn_edge_correction_off_and_on_without_recalibrating(setup, a
     w.dwell.reset()
     dwell(w, clock, app, 3.2)
     assert w.typed == "HI "  # on again: Space, with no new calibration
+
+
+def test_full_stop_fills_the_a_row_and_types(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    page = w.keyboard_page
+    a, q, stop, p = (button(page, ("key", k)) for k in "AQ.P")
+    assert a.x() == q.x() and stop.x() == p.x() and stop.y() > p.y()
+    look_at(w, source, stop)
+    dwell(w, clock, app, 3.2)
+    assert w.typed.endswith(".")

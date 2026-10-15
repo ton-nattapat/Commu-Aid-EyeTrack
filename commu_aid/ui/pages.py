@@ -74,8 +74,8 @@ class KeyboardPage(Page):
     """Yes and No down the left, a small Clear above a tall Delete on the right, and between them the word
     suggestions, a number row and the letters. Speak, Needs and Pause sit beside the message bar."""
 
-    ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
-    OFFSETS = [0, 0, 0.5, 0]
+    ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL.", "ZXCVBNM"]  # a full stop fills the A row
+    OFFSETS = [0, 0, 0, 0]
     UNITS = 10  # keys per full row
     SUGGESTIONS = 6  # word prediction buttons across the top row
     WORD_PX = 40
