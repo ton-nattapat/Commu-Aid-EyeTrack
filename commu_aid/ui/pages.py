@@ -71,7 +71,7 @@ class NeedsPage(Page):
 
 
 class KeyboardPage(Page):
-    """Yes and No down the left, Delete and Clear down the right, and between them the word
+    """Yes and No down the left, a small Clear above a tall Delete on the right, and between them the word
     suggestions, a number row and the letters. Speak, Needs and Pause sit beside the message bar."""
 
     ROWS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]
@@ -95,30 +95,39 @@ class KeyboardPage(Page):
         area_w, area_h = self.width(), self.height()
         gap, col_w = theme.KEY_GAP, theme.KEY_COLUMN_W
 
+        def edges(x: float, y: float, w: float, h: float) -> QRect:
+            """Round the edges, not the sizes, so touching keys never overlap by a pixel."""
+            left, top = round(x), round(y)
+            return QRect(left, top, round(x + w) - left, round(y + h) - top)
+
         def column(x: int, buttons: List[DwellButton]) -> None:
             h = (area_h - (len(buttons) - 1) * gap) / len(buttons)
             for i, b in enumerate(buttons):
-                self.add(b, QRect(x, round(i * (h + gap)), col_w, round(h)))
+                self.add(b, edges(x, i * (h + gap), col_w, h))
 
         column(0, [
             DwellButton(key, label.upper(), lambda e=label, t=thai: on_answer(e, t), variant=key, label_px=60)
             for key, label, thai in self.ANSWERS
         ])
-        # Delete is used most, so it is tall and away from the corners; Clear sits below it.
-        column(area_w - col_w, [
-            DwellButton("delete", "Delete", on_delete, icon="⌫", variant="nav", label_px=44),
-            DwellButton("clear", "Clear", on_clear, label_px=44),
-        ])
-
         keys_x = col_w + gap
         keys_w = area_w - 2 * keys_x
         unit_w = (keys_w - (self.UNITS - 1) * gap) / self.UNITS
         row_h = (area_h - len(self.ROWS) * gap) / (len(self.ROWS) + 1)
 
+        # Clear is small, one row tall level with the words, so it is hard to pick by mistake;
+        # Delete is used most and fills the rest of the column below it.
+        right_x = area_w - col_w
+        self.add(DwellButton("clear", "Clear", on_clear, label_px=44), edges(right_x, 0, col_w, row_h))
+        delete_y = round(row_h + gap)
+        self.add(
+            DwellButton("delete", "Delete", on_delete, icon="⌫", variant="nav", label_px=44),
+            QRect(right_x, delete_y, col_w, area_h - delete_y),
+        )
+
         def rect(col: float, row: int, span: float = 1) -> QRect:
             x = keys_x + col * (unit_w + gap)
             w = span * unit_w + (span - 1) * gap
-            return QRect(round(x), round(row * (row_h + gap)), round(w), round(row_h))
+            return edges(x, row * (row_h + gap), w, row_h)
 
         # Row 0: predicted words. Picking one finishes the current word and adds a space.
         word_w = (keys_w - (self.SUGGESTIONS - 1) * gap) / self.SUGGESTIONS
@@ -126,7 +135,7 @@ class KeyboardPage(Page):
         for i in range(self.SUGGESTIONS):
             b = DwellButton(("word", i), "", lambda i=i: on_word(self.suggestion_buttons[i].label), label_px=self.WORD_PX, variant="word")
             self.suggestion_buttons.append(
-                self.add(b, QRect(round(keys_x + i * (word_w + gap)), 0, round(word_w), round(row_h)))
+                self.add(b, edges(keys_x + i * (word_w + gap), 0, word_w, row_h))
             )
 
         for r, (chars, offset) in enumerate(zip(self.ROWS, self.OFFSETS)):
