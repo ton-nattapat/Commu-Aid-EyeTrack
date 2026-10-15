@@ -693,6 +693,10 @@ def test_yes_and_no_speak_at_once_and_keep_the_typed_text(setup, app):
     assert speaker.spoken[-1] == ("ใช่", "th")
 
 
+def words_y(page):
+    return next(b.y() for b in page.buttons if isinstance(b.key, tuple) and b.key[0] == "word")
+
+
 def test_keyboard_layout_columns_and_word_row(setup):
     w = setup[0]()
     page = w.keyboard_page
@@ -701,8 +705,9 @@ def test_keyboard_layout_columns_and_word_row(setup):
     q, p = button(page, ("key", "Q")), button(page, ("key", "P"))
     assert yes.geometry().right() < q.x() and no.x() == yes.x()
     assert delete.x() > p.geometry().right() and clear.x() == delete.x()
-    assert delete.y() < clear.y()
-    assert delete.height() > 2 * p.height()  # far bigger than one key
+    assert clear.y() < delete.y()
+    assert clear.height() == p.height() and clear.y() == words_y(page)  # small, level with the words
+    assert delete.height() > 3 * p.height()  # far bigger than one key
     words = [b for b in page.buttons if isinstance(b.key, tuple) and b.key[0] == "word"]
     assert len(words) == 6 and len({b.y() for b in words}) == 1
 
@@ -894,3 +899,15 @@ def test_settings_turn_edge_correction_off_and_on_without_recalibrating(setup, a
     w.dwell.reset()
     dwell(w, clock, app, 3.2)
     assert w.typed == "HI "  # on again: Space, with no new calibration
+
+
+def test_full_stop_fills_the_a_row_and_types(setup, app):
+    make, clock, source, _, _ = setup
+    w = make()
+    w.show_page(w.keyboard_page)
+    page = w.keyboard_page
+    a, q, stop, p = (button(page, ("key", k)) for k in "AQ.P")
+    assert a.x() == q.x() and stop.x() == p.x() and stop.y() > p.y()
+    look_at(w, source, stop)
+    dwell(w, clock, app, 3.2)
+    assert w.typed.endswith(".")

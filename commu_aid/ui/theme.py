@@ -16,9 +16,9 @@ BAR_BUTTON_W = 220  # Speak, Needs and Pause beside the message bar
 GRID_TOP = BAR_Y + BAR_H + GAP
 
 # The keyboard page: a tall column of big buttons down each side, and between them 5 rows of keys,
-# 10 across. Its gaps are narrower so the keys can be bigger; snap_px still gives a look into a gap
+# 10 across, with no gaps between them so the keys are as big as possible; snap_px gives a look into a gap
 # to the nearest key. The side columns are large, so they may sit nearer the screen edge than keys.
-KEY_GAP = 24
+KEY_GAP = 0  # keys touch (Ton, 2026-10-15); the 3 px inset border still shows each key
 KEY_COLUMN_W = 180
 KEYBOARD_SIDE_MARGIN = MARGIN
 
