@@ -1,12 +1,13 @@
 """The letter-group keyboard: a second keyboard page for testing, beside the QWERTY one.
 
 The patient first picks one of 7 big groups (A B C D, E F G H, ... U V W X, Y Z . ?), then one of
-the 4 big keys in that group, and the page goes back to the groups. The 8th big button is split:
-Space on top, typed in one look because it is used most, and 1 2 3 below, which opens the 10 digits. Each choice is a far bigger target than a QWERTY key,
-at the cost of two looks per letter.
+the 4 big keys in that group, and the page goes back to the groups. The 8th big button, 1 2 3,
+opens the 10 digits the same way. Each choice is a far bigger target than a QWERTY key, at the
+cost of two looks per letter.
 
-Yes and No sit down the left, a small Clear above a tall Delete on the right, and the word
-suggestions across the top, as on the QWERTY page. F5 switches between the two keyboards.
+Yes and No sit down the left. On the right a small Clear, then Space (one look, it is used most)
+above Delete, each as tall as a group. The word suggestions run across the top, as on QWERTY.
+F5 switches between the two keyboards.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from .dwell_button import DwellButton
 from .pages import KeyboardPage, Page
 
 GROUPS = ["ABCD", "EFGH", "IJKL", "MNOP", "QRST", "UVWX", "YZ.?"]
-GROUP_COLS = 4  # 2 rows of 4: the 7 groups, then Space above 1 2 3
+GROUP_COLS = 4  # 2 rows of 4: the 7 groups, then 1 2 3
 DIGITS = "1234567890"
 DIGIT_COLS = 5
 
@@ -62,9 +63,17 @@ class GroupKeyboardPage(Page):
         keys_w = area_w - 2 * keys_x
         word_h = (area_h - (self.WORD_ROWS - 1) * gap) / self.WORD_ROWS
 
+        # Below the words: the 8 groups in 2 rows of 4, or the 4 keys of the open group and Back.
+        top = word_h + gap
+        body_h = area_h - top
+        cell_w = (keys_w - (GROUP_COLS - 1) * gap) / GROUP_COLS
+        group_h = (body_h - gap) / 2
+
         right_x = area_w - col_w
         self.add(DwellButton("clear", "Clear", on_clear, label_px=44), edges(right_x, 0, col_w, word_h))
-        delete_y = round(word_h + gap)
+        space = DwellButton("space", "Space", lambda: self._type(" "), label_px=44)
+        self.add(space, edges(right_x, top, col_w, group_h))
+        delete_y = round(top + group_h + gap)
         self.add(
             DwellButton("delete", "Delete", on_delete, icon="⌫", variant="nav", label_px=44),
             QRect(right_x, delete_y, col_w, area_h - delete_y),
@@ -76,12 +85,7 @@ class GroupKeyboardPage(Page):
             b = DwellButton(("word", i), "", lambda i=i: self._word(i), label_px=self.WORD_PX, variant="word")
             self.suggestion_buttons.append(self.add(b, edges(keys_x + i * (word_w + gap), 0, word_w, word_h)))
 
-        # Below the words: the 8 groups in 2 rows of 4, or the 4 keys of the open group and Back.
-        top = word_h + gap
-        body_h = area_h - top
-        cell_w = (keys_w - (GROUP_COLS - 1) * gap) / GROUP_COLS
-        group_h = (body_h - gap) / 2
-
+        # Below the words: the 8 groups in 2 rows of 4, or the keys of the open group and Back.
         self.group_buttons: List[DwellButton] = []
         def cell(i: int) -> QRect:
             row, col = divmod(i, GROUP_COLS)
@@ -90,12 +94,8 @@ class GroupKeyboardPage(Page):
         for i, chars in enumerate(GROUPS):
             b = DwellButton(("group", i), "  ".join(chars), lambda i=i: self.open_group(i), label_px=64)
             self.group_buttons.append(self.add(b, cell(i)))
-        last = cell(len(GROUPS))
-        half = (last.height() - gap) / 2
-        space = DwellButton("space", "Space", lambda: on_letter(" "), label_px=56)
-        self.group_buttons.append(self.add(space, edges(last.x(), last.y(), last.width(), half)))
-        numbers = DwellButton("numbers", "1  2  3", self.open_numbers, label_px=56)
-        self.group_buttons.append(self.add(numbers, edges(last.x(), last.y() + half + gap, last.width(), half)))
+        numbers = DwellButton("numbers", "1  2  3", self.open_numbers, label_px=64)
+        self.group_buttons.append(self.add(numbers, cell(len(GROUPS))))
 
         # The letters are taller than a group; Back fills the strip below them.
         letter_h = round((body_h - gap) * 0.65)
@@ -109,7 +109,7 @@ class GroupKeyboardPage(Page):
         self.digit_buttons: List[DwellButton] = []
         for i, d in enumerate(DIGITS):
             row, col = divmod(i, DIGIT_COLS)
-            b = DwellButton(("digit", d), d, lambda d=d: self._digit(d), label_px=80)
+            b = DwellButton(("digit", d), d, lambda d=d: self._type(d), label_px=80)
             self.digit_buttons.append(
                 self.add(b, edges(keys_x + col * (digit_w + gap), top + row * (digit_h + gap), digit_w, digit_h))
             )
@@ -151,9 +151,10 @@ class GroupKeyboardPage(Page):
         self.show_groups()
         self.on_letter(ch)
 
-    def _digit(self, d: str) -> None:
+    def _type(self, ch: str) -> None:
+        """A digit or Space: type it and go back to the groups."""
         self.show_groups()
-        self.on_letter(d)
+        self.on_letter(ch)
 
     def _word(self, i: int) -> None:
         word = self.suggestion_buttons[i].label

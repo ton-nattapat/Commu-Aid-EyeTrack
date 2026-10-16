@@ -974,7 +974,7 @@ def test_letter_group_targets_stay_large_and_clear_of_the_edges(setup, tmp_path)
     w = setup[0]()
     page = group_page(w, tmp_path)
     d = w.cfg.display
-    columns = {"yes", "no", "delete", "clear"}
+    columns = {"yes", "no", "delete", "clear", "space"}
     for stage in (page.show_groups, lambda: page.open_group(0), page.open_numbers):
         stage()
         for b in page.buttons:
@@ -984,3 +984,6 @@ def test_letter_group_targets_stay_large_and_clear_of_the_edges(setup, tmp_path)
             assert pos.x() >= side and pos.x() + b.width() <= 1920 - side, b.key
             assert pos.y() + b.height() <= 1080 - d.bottom_margin_px, b.key
     assert button(page, ("letter", 0)).width() > 300  # far bigger than a QWERTY key
+    space, delete, clear = button(page, "space"), button(page, "delete"), button(page, "clear")
+    assert space.x() == delete.x() == clear.x() and clear.y() < space.y() < delete.y()  # Space over Delete
+    assert button(page, "numbers").size() == button(page, ("group", 0)).size()

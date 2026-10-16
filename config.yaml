@@ -63,7 +63,7 @@ pause:
 
 # Which keyboard the Keyboard tile opens. F5 switches between them and saves the choice.
 keyboard:
-  style: qwerty                    # qwerty, or groups: big groups (A-D, E-H, ... Y Z . ?), Space, and 1 2 3 for the digits
+  style: qwerty                    # qwerty, or groups: big groups (A-D, E-H, ... Y Z . ?, 1 2 3), then the keys of that group
 
 # Needs page tiles, left to right, top to bottom (11 tiles; the 12th corner tile always opens the keyboard).
 # action: speak = show and speak the Thai phrase; alert = also play the loud caregiver alarm.
