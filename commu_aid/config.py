@@ -109,7 +109,7 @@ KEYBOARD_STYLES = ("qwerty", "groups")
 
 @dataclass
 class KeyboardConfig:
-    style: str = "qwerty"  # qwerty, or groups: 8 big letter groups, then the 4 keys of the chosen group (F5 switches)
+    style: str = "qwerty"  # qwerty, or groups: big letter groups, then the 4 keys of the chosen group (F5 switches)
 
 
 @dataclass

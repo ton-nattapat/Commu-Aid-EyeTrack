@@ -1,8 +1,8 @@
 """The letter-group keyboard: a second keyboard page for testing, beside the QWERTY one.
 
 The patient first picks one of 7 big groups (A B C D, E F G H, ... U V W X, Y Z . ?), then one of
-the 4 big keys in that group, and the page goes back to the groups. The 8th big button is Space,
-typed in one look because it is used most. Each choice is a far bigger target than a QWERTY key,
+the 4 big keys in that group, and the page goes back to the groups. The 8th big button is split:
+Space on top, typed in one look because it is used most, and 1 2 3 below, which opens the 10 digits. Each choice is a far bigger target than a QWERTY key,
 at the cost of two looks per letter.
 
 Yes and No sit down the left, a small Clear above a tall Delete on the right, and the word
@@ -21,7 +21,9 @@ from .dwell_button import DwellButton
 from .pages import KeyboardPage, Page
 
 GROUPS = ["ABCD", "EFGH", "IJKL", "MNOP", "QRST", "UVWX", "YZ.?"]
-GROUP_COLS = 4  # 2 rows of 4: the 7 groups, then Space
+GROUP_COLS = 4  # 2 rows of 4: the 7 groups, then Space above 1 2 3
+DIGITS = "1234567890"
+DIGIT_COLS = 5
 
 
 class GroupKeyboardPage(Page):
@@ -88,8 +90,12 @@ class GroupKeyboardPage(Page):
         for i, chars in enumerate(GROUPS):
             b = DwellButton(("group", i), "  ".join(chars), lambda i=i: self.open_group(i), label_px=64)
             self.group_buttons.append(self.add(b, cell(i)))
-        space = DwellButton("space", "Space", lambda: on_letter(" "), label_px=64)
-        self.group_buttons.append(self.add(space, cell(len(GROUPS))))
+        last = cell(len(GROUPS))
+        half = (last.height() - gap) / 2
+        space = DwellButton("space", "Space", lambda: on_letter(" "), label_px=56)
+        self.group_buttons.append(self.add(space, edges(last.x(), last.y(), last.width(), half)))
+        numbers = DwellButton("numbers", "1  2  3", self.open_numbers, label_px=56)
+        self.group_buttons.append(self.add(numbers, edges(last.x(), last.y() + half + gap, last.width(), half)))
 
         # The letters are taller than a group; Back fills the strip below them.
         letter_h = round((body_h - gap) * 0.65)
@@ -97,6 +103,16 @@ class GroupKeyboardPage(Page):
         for i in range(GROUP_COLS):
             b = DwellButton(("letter", i), "", lambda i=i: self._letter(i), label_px=110)
             self.letter_buttons.append(self.add(b, edges(keys_x + i * (cell_w + gap), top, cell_w, letter_h)))
+        # The digits: 2 rows of 5 in the same space as the letters.
+        digit_w = (keys_w - (DIGIT_COLS - 1) * gap) / DIGIT_COLS
+        digit_h = (letter_h - gap) / 2
+        self.digit_buttons: List[DwellButton] = []
+        for i, d in enumerate(DIGITS):
+            row, col = divmod(i, DIGIT_COLS)
+            b = DwellButton(("digit", d), d, lambda d=d: self._digit(d), label_px=80)
+            self.digit_buttons.append(
+                self.add(b, edges(keys_x + col * (digit_w + gap), top + row * (digit_h + gap), digit_w, digit_h))
+            )
         back_y = top + letter_h + gap
         self.back_button = self.add(
             DwellButton("back", "Back to groups", self.show_groups, icon="↩", variant="nav", label_px=40),
@@ -112,19 +128,21 @@ class GroupKeyboardPage(Page):
         for b, ch in zip(self.letter_buttons, GROUPS[i]):
             b.label = ch
             b.update()
-        self._show_stage(groups=False)
+        self._show_stage(self.letter_buttons)
+
+    def open_numbers(self) -> None:
+        self.open_index = -1
+        self._show_stage(self.digit_buttons)
 
     def show_groups(self) -> None:
         self.open_index = -1
-        self._show_stage(groups=True)
+        self._show_stage(self.group_buttons)
 
-    def _show_stage(self, groups: bool) -> None:
-        for b in self.group_buttons:
+    def _show_stage(self, shown: List[DwellButton]) -> None:
+        """Show one set of keys (with Back unless it is the groups) and hide the others."""
+        for b in (*self.group_buttons, *self.letter_buttons, *self.digit_buttons, self.back_button):
             b.set_state(False, 0.0)
-            b.setVisible(groups)
-        for b in (*self.letter_buttons, self.back_button):
-            b.set_state(False, 0.0)
-            b.setVisible(not groups)
+            b.setVisible(b in shown or (b is self.back_button and shown is not self.group_buttons))
 
     def _letter(self, i: int) -> None:
         if self.open_index < 0:
@@ -132,6 +150,10 @@ class GroupKeyboardPage(Page):
         ch = GROUPS[self.open_index][i]
         self.show_groups()
         self.on_letter(ch)
+
+    def _digit(self, d: str) -> None:
+        self.show_groups()
+        self.on_letter(d)
 
     def _word(self, i: int) -> None:
         word = self.suggestion_buttons[i].label

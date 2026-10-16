@@ -941,6 +941,21 @@ def test_letter_groups_back_returns_without_typing(setup, app, tmp_path):
     assert w.typed == "" and not button(page, ("group", 6)).isHidden()
 
 
+def test_letter_groups_type_a_number(setup, app, tmp_path):
+    make, clock, source, _, _ = setup
+    w = make()
+    page = group_page(w, tmp_path)
+    look_at(w, source, button(page, "numbers"))
+    dwell(w, clock, app, 3.2)
+    digits = [b for b in page.buttons if isinstance(b.key, tuple) and b.key[0] == "digit"]
+    assert [b.label for b in digits] == list("1234567890") and all(not b.isHidden() for b in digits)
+    assert not button(page, "back").isHidden() and button(page, ("group", 0)).isHidden()
+    look_at(w, source, button(page, ("digit", "7")))
+    dwell(w, clock, app, 1.2)
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "7" and not button(page, ("group", 0)).isHidden() and digits[0].isHidden()
+
+
 def test_f5_switches_keyboards_and_remembers(setup, app, tmp_path):
     w = setup[0]()
     w._on_letter("HI")
@@ -960,7 +975,7 @@ def test_letter_group_targets_stay_large_and_clear_of_the_edges(setup, tmp_path)
     page = group_page(w, tmp_path)
     d = w.cfg.display
     columns = {"yes", "no", "delete", "clear"}
-    for stage in (page.show_groups, lambda: page.open_group(0)):
+    for stage in (page.show_groups, lambda: page.open_group(0), page.open_numbers):
         stage()
         for b in page.buttons:
             assert min(b.width(), b.height()) >= 110, b.key
