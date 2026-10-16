@@ -4,7 +4,7 @@ The layout is drawn on a fixed 1920x1080 canvas and scaled to fit the screen, so
 same on any monitor. Every 16 ms the window reads new gaze samples, finds the button under the
 gaze, and feeds the dwell engine.
 
-Caregiver keys: F2 recalibrate, F3 settings, F4 pause / resume, Ctrl+G gaze dot on/off, F11 full screen, Ctrl+Q quit.
+Caregiver keys: F2 recalibrate, F3 settings, F4 pause / resume, F5 QWERTY / letter-group keyboard, Ctrl+G gaze dot on/off, F11 full screen, Ctrl+Q quit.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ from . import theme
 from .calibration import CalibrationScreen
 from .dwell_button import DwellButton
 from .gaze_dot import GazeDot
+from .group_keyboard import GroupKeyboardPage
 from .message_bar import MessageBar
 from .pages import KeyboardPage, NeedsPage, Page
 from .pause_screen import PauseScreen
@@ -113,7 +114,7 @@ class MainWindow(QGraphicsView):
         self.bar.setGeometry(theme.MARGIN, theme.BAR_Y, self._bar_widths["needs"], theme.BAR_H)
 
         self.needs_page = NeedsPage(
-            cfg.needs, self._on_need, lambda: self.show_page(self.keyboard_page), area, self.canvas
+            cfg.needs, self._on_need, lambda: self.show_page(self.active_keyboard), area, self.canvas
         )
         self.predictor = Predictor(DATA_DIR / "words.json", extra_words=[n.label for n in cfg.needs])
         # The keyboard's side columns are big enough to sit nearer the screen edges than the keys.
@@ -124,12 +125,17 @@ class MainWindow(QGraphicsView):
             self._on_letter, self._on_word, self._on_delete, self._on_clear, self._on_answer,
             keyboard_area, self.canvas,
         )
+        self.group_keyboard_page = GroupKeyboardPage(
+            self._on_letter, self._on_word, self._on_delete, self._on_clear, self._on_answer,
+            keyboard_area, self.canvas,
+        )
         self.page: Page = self.needs_page
         self.keyboard_page.hide()
+        self.group_keyboard_page.hide()
 
         # A quiet hint for the nurse in the strip below the buttons; Settings, Pause and calibration cover it.
         self.settings_hint = QLabel(
-            "Caregiver: F2 recalibrate    F3 Settings    (hold fn on a Mac: fn + F2, fn + F3)", self.canvas
+            "Caregiver: F2 recalibrate    F3 Settings    F5 switch keyboard    (hold fn on a Mac)", self.canvas
         )
         self.settings_hint.setFont(theme.font(22))
         self.settings_hint.setStyleSheet(f"color: {theme.TEXT_QUIET.name()}; background: transparent;")
@@ -161,7 +167,7 @@ class MainWindow(QGraphicsView):
         self.last_sample: Optional[GazeSample] = None
         self.correction: Optional[EdgeCorrection] = None  # edge correction from the last accepted calibration
         self.typed = ""
-        self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
+        self._set_suggestions()
         self._request_id = 0
         self._pending_request: Optional[int] = None  # the message waiting for its translation
         self._translated.connect(self._on_translated)
@@ -170,6 +176,7 @@ class MainWindow(QGraphicsView):
             ("F2", self.open_calibration),
             ("F3", self.open_settings),
             ("F4", self.toggle_pause),
+            ("F5", self.toggle_keyboard_style),
             ("Ctrl+G", self._toggle_gaze_dot),
             ("F11", self._toggle_full_screen),
             ("Ctrl+Q", self.close),
@@ -264,7 +271,7 @@ class MainWindow(QGraphicsView):
 
     def _bar_buttons(self):
         """The buttons in the message bar row on the current page."""
-        if self.page is self.keyboard_page:
+        if self._on_keyboard():
             return [self.speak_button, self.needs_button, self.pause_button]
         return [self.pause_button]
 
@@ -275,13 +282,15 @@ class MainWindow(QGraphicsView):
         for b in (*self.page.buttons, *self._bar_buttons()):
             b.set_state(False, 0.0)
         self.page = page
+        if page is self.group_keyboard_page:
+            page.show_groups()  # always open on the groups
         page.show()
-        keyboard = page is self.keyboard_page
+        keyboard = self._on_keyboard()
         self.speak_button.setVisible(keyboard)
         self.needs_button.setVisible(keyboard)
         self.bar.resize(self._bar_widths["keyboard" if keyboard else "needs"], theme.BAR_H)
         self.gaze_dot.raise_()
-        if page is self.keyboard_page:
+        if keyboard:
             self._show_typed()
 
     def _on_need(self, tile: NeedTile) -> None:
@@ -295,12 +304,39 @@ class MainWindow(QGraphicsView):
 
     def _show_typed(self, note: str = "", warning: bool = False) -> None:
         self.bar.show_typing(self.typed, note, warning)
-        self.keyboard_page.set_suggestions(self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS))
+        self._set_suggestions()
+
+    def _set_suggestions(self) -> None:
+        words = self.predictor.suggest(self.typed, KeyboardPage.SUGGESTIONS)
+        self.keyboard_page.set_suggestions(words)
+        self.group_keyboard_page.set_suggestions(words)
+
+    @property
+    def active_keyboard(self) -> Page:
+        """The keyboard the Keyboard tile opens: QWERTY, or the letter groups (F5 switches)."""
+        return self.group_keyboard_page if self.cfg.keyboard.style == "groups" else self.keyboard_page
+
+    def _on_keyboard(self) -> bool:
+        return self.page is self.keyboard_page or self.page is self.group_keyboard_page
+
+    def toggle_keyboard_style(self) -> None:
+        """Caregiver key F5: switch keyboards, keep the typed text, and remember the choice in config.yaml."""
+        if self.calibration is not None or self.settings.isVisible() or self.paused:
+            return
+        self.cfg.keyboard.style = "qwerty" if self.cfg.keyboard.style == "groups" else "groups"
+        try:
+            self.cfg.save()
+        except Exception:
+            log.exception("Could not save the keyboard choice")
+        self.group_keyboard_page.show_groups()
+        self.show_page(self.active_keyboard)
+        name = "Letter groups" if self.cfg.keyboard.style == "groups" else "QWERTY"
+        self._show_status(f"{name} keyboard", note="F5 switches keyboard")
 
     def _show_status(self, message: str, note: str = "", warning: bool = False) -> None:
         """A status line such as "Welcome back". On the keyboard page the typed text stays in the box,
         because the next key adds to it, and the status shows as a small note underneath."""
-        if self.page is self.keyboard_page:
+        if self._on_keyboard():
             self._show_typed(f"{message}. {note}" if note else message, warning)
         else:
             self.bar.show_message(message, note=note, warning=warning)
@@ -365,7 +401,7 @@ class MainWindow(QGraphicsView):
             return  # already answered, or a newer message replaced this one
         self._pending_request = None
         log.warning("Translation timed out for %r", english)
-        if not (self.page is self.keyboard_page and self._sentence() != english):
+        if not (self._on_keyboard() and self._sentence() != english):
             self.bar.show_message(english, note="Translation took too long, speaking English", warning=True)
         self.speaker.speak(english, "en")
         self._log(english, "")
@@ -376,7 +412,7 @@ class MainWindow(QGraphicsView):
         self._pending_request = None
         thai = ok and spoken != english
         # If the patient kept typing while it translated, speak it but leave their new text in the box.
-        if not (self.page is self.keyboard_page and self._sentence() != english):
+        if not (self._on_keyboard() and self._sentence() != english):
             if thai:
                 self.bar.show_message(english, spoken)
             elif not ok:
@@ -528,7 +564,8 @@ class MainWindow(QGraphicsView):
         if action is None:
             super().keyPressEvent(event)
             return
-        self.show_page(self.keyboard_page)
+        if not self._on_keyboard():
+            self.show_page(self.active_keyboard)
         action()
 
     def _caregiver_key(self, event):
