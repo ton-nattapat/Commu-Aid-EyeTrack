@@ -894,3 +894,78 @@ def test_settings_turn_edge_correction_off_and_on_without_recalibrating(setup, a
     w.dwell.reset()
     dwell(w, clock, app, 3.2)
     assert w.typed == "HI "  # on again: Space, with no new calibration
+
+
+def group_page(w, tmp_path):
+    w.cfg.path = tmp_path / "config.yaml"  # F5 saves the choice; keep the repo's config.yaml untouched
+    w.toggle_keyboard_style()
+    assert w.page is w.group_keyboard_page
+    return w.group_keyboard_page
+
+
+def test_letter_groups_type_a_letter_in_two_looks_then_go_back(setup, app, tmp_path):
+    make, clock, source, _, _ = setup
+    w = make()
+    page = group_page(w, tmp_path)
+    assert w.speak_button.isVisible() and w.needs_button.isVisible()
+    groups = [b for b in page.buttons if isinstance(b.key, tuple) and b.key[0] == "group"]
+    assert [b.label for b in groups][:2] == ["A  B  C  D", "E  F  G  H"] and len(groups) == 7
+    assert all(not b.isHidden() for b in groups) and button(page, ("letter", 0)).isHidden()
+
+    look_at(w, source, button(page, ("group", 1)))
+    dwell(w, clock, app, 3.2)
+    letters = [button(page, ("letter", i)) for i in range(4)]
+    assert [b.label for b in letters] == ["E", "F", "G", "H"]
+    assert all(not b.isHidden() for b in letters) and button(page, ("group", 0)).isHidden()
+
+    look_at(w, source, letters[2])
+    dwell(w, clock, app, 1.2)  # cooldown after the group
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "G"
+    assert not button(page, ("group", 0)).isHidden() and letters[0].isHidden()  # back to the groups
+
+    look_at(w, source, button(page, "space"))
+    dwell(w, clock, app, 1.2)
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "G "
+
+
+def test_letter_groups_back_returns_without_typing(setup, app, tmp_path):
+    make, clock, source, _, _ = setup
+    w = make()
+    page = group_page(w, tmp_path)
+    page.open_group(6)
+    assert [button(page, ("letter", i)).label for i in range(4)] == ["Y", "Z", ".", "?"]
+    look_at(w, source, button(page, "back"))
+    dwell(w, clock, app, 3.2)
+    assert w.typed == "" and not button(page, ("group", 6)).isHidden()
+
+
+def test_f5_switches_keyboards_and_remembers(setup, app, tmp_path):
+    w = setup[0]()
+    w._on_letter("HI")
+    group_page(w, tmp_path)
+    assert w.bar.english == "HI"  # typed text kept
+    assert "style: groups" in (tmp_path / "config.yaml").read_text()
+    w.show_page(w.needs_page)
+    look_target = w.needs_page.buttons[-1]
+    look_target.activate()  # the Keyboard tile opens the chosen keyboard
+    assert w.page is w.group_keyboard_page
+    w.toggle_keyboard_style()
+    assert w.page is w.keyboard_page and w.cfg.keyboard.style == "qwerty"
+
+
+def test_letter_group_targets_stay_large_and_clear_of_the_edges(setup, tmp_path):
+    w = setup[0]()
+    page = group_page(w, tmp_path)
+    d = w.cfg.display
+    columns = {"yes", "no", "delete", "clear"}
+    for stage in (page.show_groups, lambda: page.open_group(0)):
+        stage()
+        for b in page.buttons:
+            assert min(b.width(), b.height()) >= 110, b.key
+            pos = b.mapTo(w.canvas, QPoint(0, 0))
+            side = min(d.side_margin_px, theme.KEYBOARD_SIDE_MARGIN) if b.key in columns else d.side_margin_px
+            assert pos.x() >= side and pos.x() + b.width() <= 1920 - side, b.key
+            assert pos.y() + b.height() <= 1080 - d.bottom_margin_px, b.key
+    assert button(page, ("letter", 0)).width() > 300  # far bigger than a QWERTY key

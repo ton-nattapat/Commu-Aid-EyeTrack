@@ -104,6 +104,14 @@ class PauseConfig:
     resume_dwell_s: float = 4.0  # look at Resume this long to come back; longer than dwell so a passing glance does not
 
 
+KEYBOARD_STYLES = ("qwerty", "groups")
+
+
+@dataclass
+class KeyboardConfig:
+    style: str = "qwerty"  # qwerty, or groups: 8 big letter groups, then the 4 keys of the chosen group (F5 switches)
+
+
 @dataclass
 class NeedTile:
     label: str
@@ -122,6 +130,7 @@ class AppConfig:
     speech: SpeechConfig = field(default_factory=SpeechConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     pause: PauseConfig = field(default_factory=PauseConfig)
+    keyboard: KeyboardConfig = field(default_factory=KeyboardConfig)
     needs: List[NeedTile] = field(default_factory=list)
     path: Path | None = None
 
@@ -167,12 +176,15 @@ def load_config(path: Path | str) -> AppConfig:
         speech=_section(SpeechConfig, raw.get("speech")),
         calibration=_section(CalibrationConfig, raw.get("calibration")),
         pause=_section(PauseConfig, raw.get("pause")),
+        keyboard=_section(KeyboardConfig, raw.get("keyboard")),
         needs=needs,
         path=path,
     )
     cfg.dwell.dwell_time_s = clamp_dwell(cfg.dwell.dwell_time_s)
     cfg.dwell.wobble_grace_s = clamp_wobble_grace(cfg.dwell.wobble_grace_s)
     cfg.speech.rate = clamp_speech_rate(cfg.speech.rate)
+    if cfg.keyboard.style not in KEYBOARD_STYLES:
+        cfg.keyboard.style = KeyboardConfig.style
     return cfg
 
 

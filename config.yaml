@@ -61,6 +61,10 @@ calibration:
 pause:
   resume_dwell_s: 4.0              # look at Resume this long to come back (longer than dwell, so a passing glance does not)
 
+# Which keyboard the Keyboard tile opens. F5 switches between them and saves the choice.
+keyboard:
+  style: qwerty                    # qwerty, or groups: 8 big buttons (A-D, E-H, ... Y Z . ?, Space), then the 4 keys of that group
+
 # Needs page tiles, left to right, top to bottom (11 tiles; the 12th corner tile always opens the keyboard).
 # action: speak = show and speak the Thai phrase; alert = also play the loud caregiver alarm.
 needs:
