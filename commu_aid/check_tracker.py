@@ -2,8 +2,8 @@
 
     python -m commu_aid.check_tracker
 
-Prints the Python and SDK versions, what the Tobii SDK finds, and on macOS whether the Mac
-itself sees a Tobii device on USB. Then compares the screen size the tracker was set up for
+Prints the Python and SDK versions, what the Tobii SDK finds, and on macOS and Windows whether
+the computer itself sees a Tobii device on USB. Then compares the screen size the tracker was set up for
 (Display Setup in Tobii Pro Eye Tracker Manager) with the real screen, because a mismatch makes
 gaze miss more and more towards the screen edges. Each problem comes with what to try next.
 """
@@ -25,6 +25,34 @@ def _mac_usb_registry() -> Optional[str]:
         return subprocess.run(["ioreg", "-p", "IOUSB", "-l", "-w0"], capture_output=True, text=True, timeout=30).stdout
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+def _windows_usb_listing() -> Optional[str]:
+    """Plugged-in devices as "InstanceId|FriendlyName" lines, from PowerShell's Get-PnpDevice."""
+    command = (
+        "Get-PnpDevice -PresentOnly | ForEach-Object { $_.InstanceId + '|' + $_.FriendlyName }"
+    )
+    try:
+        return subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
+            capture_output=True, text=True, timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def windows_tobii_devices(listing: str) -> List[str]:
+    """Names of the Tobii devices in _windows_usb_listing() output (USB vendor id 2104)."""
+    found = []
+    for line in listing.splitlines():
+        instance, _, name = line.partition("|")
+        vid = f"VID_{TOBII_USB_VENDOR_ID:04X}"
+        if vid in instance.upper() or "tobii" in name.lower():
+            name = name.strip() or instance.strip()
+            if name not in found:
+                found.append(name)
+    return found
 
 
 def tobii_usb_devices(registry: str) -> List[str]:
@@ -59,7 +87,7 @@ def display_area_problems(area_mm: Tuple[float, float], screen_mm: Optional[Tupl
 
 
 def _screen_size_mm() -> Optional[Tuple[float, float]]:
-    """Physical size of the main screen, from Qt (macOS reports it from the display itself)."""
+    """Physical size of the main screen, from Qt (macOS and Windows read it from the display itself)."""
     try:
         from PySide6.QtGui import QGuiApplication
 
@@ -114,6 +142,21 @@ def main() -> int:
                 print("    USB-C to USB-A adapter), not through a hub or monitor. Unplug it, wait 5 s,")
                 print("    plug it back in. If macOS asks to allow the accessory, choose Allow.")
 
+    elif sys.platform == "win32":
+        print(f"Windows     {platform.version()}")
+        listing = _windows_usb_listing()
+        if listing is None:
+            print("USB         could not ask Windows for its devices")
+        else:
+            devices = windows_tobii_devices(listing)
+            if devices:
+                print(f"USB         Windows sees: {', '.join(devices)}")
+            else:
+                ok = False
+                print("USB         Windows does not see a Tobii device on USB")
+                print("  ! Plug the tracker's USB cable straight into the PC (not through a hub or")
+                print("    monitor). Unplug it, wait 5 s, plug it back in.")
+
     try:
         import tobii_research as tr
     except ImportError:
@@ -124,10 +167,16 @@ def main() -> int:
     trackers = tr.find_all_eyetrackers()
     if not trackers:
         print("Trackers    none found")
-        print("  ! Open Tobii Pro Eye Tracker Manager. If the Spark is not listed, press + (top right)")
-        print("    to install its driver. If Install is greyed out (newer macOS), install the")
-        print("    Tobii Pro Spark runtime from https://connect.tobii.com/s/spark-downloads instead.")
-        print("    Then unplug and replug the tracker; restart the Mac if it is still not found.")
+        if sys.platform == "win32":
+            print("  ! Install the Tobii Pro Spark runtime for Windows from")
+            print("    https://connect.tobii.com/s/spark-downloads (or open Tobii Pro Eye Tracker Manager")
+            print("    and install the driver it offers for the Spark). Then unplug and replug the")
+            print("    tracker; restart the PC if it is still not found.")
+        else:
+            print("  ! Open Tobii Pro Eye Tracker Manager. If the Spark is not listed, press + (top right)")
+            print("    to install its driver. If Install is greyed out (newer macOS), install the")
+            print("    Tobii Pro Spark runtime from https://connect.tobii.com/s/spark-downloads instead.")
+            print("    Then unplug and replug the tracker; restart the Mac if it is still not found.")
         return 1
     for et in trackers:
         print(f"Tracker     {et.model}  serial {et.serial_number}  firmware {et.firmware_version}")

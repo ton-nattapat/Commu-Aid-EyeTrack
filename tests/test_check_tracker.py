@@ -1,4 +1,4 @@
-from commu_aid.check_tracker import tobii_usb_devices
+from commu_aid.check_tracker import tobii_usb_devices, windows_tobii_devices
 
 IOREG = """\
 +-o Root  <class IORegistryEntry, id 0x100000100, retain 30>
@@ -25,6 +25,20 @@ def test_finds_tobii_by_vendor_id():
 
 def test_no_tobii():
     assert tobii_usb_devices(IOREG.replace("Tobii Pro Spark@", "Keyboard@").replace("8452", "1452")) == []
+
+
+PNP = """\
+USB\\ROOT_HUB30\\4&1B2C3D&0&0|USB Root Hub (USB 3.0)
+USB\\VID_2104&PID_0313\\TPE01-100205130364|Tobii Pro Spark
+USB\\VID_2104&PID_0313&MI_00\\6&2A&0&0000|USB Input Device
+USB\\VID_046D&PID_C52B\\5&1A&0&3|USB Composite Device
+"""
+
+
+def test_windows_finds_tobii_by_vendor_id():
+    assert windows_tobii_devices(PNP) == ["Tobii Pro Spark", "USB Input Device"]
+    assert windows_tobii_devices(PNP.replace("2104", "1234")) == ["Tobii Pro Spark"]  # by name
+    assert windows_tobii_devices(PNP.replace("2104", "1234").replace("Tobii", "Eye")) == []
 
 
 def test_display_area_matches_screen():

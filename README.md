@@ -35,7 +35,7 @@ in 0.25 s steps) to choose it. The app shows the English text and speaks it in T
   switch the edge correction on or off, and edit the Needs tiles. Changes apply on Save,
   without a restart.
   A small line at the bottom of the Needs and Keyboard pages reminds the nurse of F2 (recalibrate)
-  and F3 (Settings), with fn on a Mac.
+  and F3 (Settings), with fn on a Mac (the fn part is shown only on a Mac).
 - **Wobble grace**: if the gaze slips onto a neighbouring button and comes back within 0.5 s
   (`dwell.wobble_grace_s`, 0 to 1 s), the first button keeps its progress instead of starting over.
   If the gaze stays on the new button, its dwell counts from when the gaze arrived. Resume on
@@ -130,6 +130,14 @@ packaging/mac/build_mac.sh      # makes dist/CommunicationAid-<version>-<chip>.d
 Send the `.dmg` by AirDrop, USB stick or a shared drive. Rebuild after pulling new changes, so the
 installer has them. Options (`--version`, `--no-translate`, signing) are in
 [docs/install-mac.md](docs/install-mac.md).
+
+## Install on Windows
+
+The app also runs on Windows 10 and 11 (64-bit), with the Thai voice Microsoft Pattara. GitHub
+builds a Windows installer for every change (Actions > **Windows** > a run > Artifacts >
+**CommunicationAid-Windows-Setup**). The PC also needs the Tobii Pro Spark runtime, Tobii Pro Eye
+Tracker Manager (Display Setup) and the Thai text-to-speech voice. Step by step:
+[docs/install-windows.md](docs/install-windows.md).
 
 ## Setup (macOS)
 

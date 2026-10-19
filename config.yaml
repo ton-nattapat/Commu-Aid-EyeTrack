@@ -42,9 +42,10 @@ translation:
   timeout_s: 8             # seconds; past this the app gives up and speaks the English instead
 
 speech:
-  engine: auto             # auto (macOS: say, others: pyttsx3), say, pyttsx3, none
+  engine: auto             # auto (macOS: say, Windows: sapi, others: pyttsx3), say, sapi, pyttsx3, none
   voice_th: Kanya          # macOS Thai voice, or "system" for the Mac's System Voice (Accessibility > Spoken Content),
-                           # which is how a Siri voice is used; on Windows, a voice name containing this text is used
+                           # which is how a Siri voice is used. On Windows, the voice whose name contains this
+                           # text (e.g. Pattara); if none does, the first Thai voice installed
   voice_en: Samantha
   rate: 200                # words per minute, 120 to 300; Settings (F3) changes it in steps of 20
 

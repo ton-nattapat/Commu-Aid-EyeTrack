@@ -227,7 +227,8 @@ class SettingsPage(QWidget):
         layout.addLayout(steady_row)
 
         # Speech: how fast the app speaks, and which Thai voice. "System voice" speaks with the
-        # Mac's System Voice, the only way to use a Siri voice from the app.
+        # Mac's System Voice, the only way to use a Siri voice from the app; on Windows it picks the
+        # first installed Thai voice.
         speech_row = QHBoxLayout()
         speech_row.setSpacing(theme.GAP)
         rate_label = QLabel("Speech speed")
@@ -373,21 +374,31 @@ class SettingsPage(QWidget):
         self.rate_more.setEnabled(self.rate < SPEECH_RATE_MAX)
 
     def _load_voices(self) -> None:
-        """System voice first, then the Mac's installed Thai voices, keeping the saved one even if it
+        """System voice first, then the installed Thai voices, keeping the saved one even if it
         is not installed (yet)."""
         names = self.speaker.voices("th") if self.speaker is not None else []
         current = self.cfg.speech.voice_th or SYSTEM_VOICE
         if current != SYSTEM_VOICE and current not in names:
-            names.append(current)
+            if getattr(self.speaker, "engine", "say") == "say":
+                names.append(current)
+            else:
+                # Windows picks the voice whose name contains the saved text, else the first Thai
+                # voice (e.g. for the Mac's Kanya); show the one that will speak.
+                current = next((n for n in names if current.lower() in n.lower()), SYSTEM_VOICE)
         self.voice_names = [SYSTEM_VOICE, *names]
         self._set_voice(self.voice_names.index(current))
 
     def _set_voice(self, index: int) -> None:
         self.voice_index = max(0, min(len(self.voice_names) - 1, index))
         name = self.voice_names[self.voice_index]
-        self.voice_value.setText("System voice" if name == SYSTEM_VOICE else name)
+        self.voice_value.setText(self._system_voice_label() if name == SYSTEM_VOICE else name)
         self.voice_prev.setEnabled(self.voice_index > 0)
         self.voice_next.setEnabled(self.voice_index < len(self.voice_names) - 1)
+
+    def _system_voice_label(self) -> str:
+        # On a Mac this is the System Voice; elsewhere the first installed Thai voice.
+        engine = getattr(self.speaker, "engine", "say")
+        return "System voice" if engine == "say" else "Automatic"
 
     def _try_voice(self) -> None:
         if self.speaker is not None:
