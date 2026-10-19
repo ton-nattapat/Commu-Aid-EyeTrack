@@ -396,7 +396,9 @@ def test_settings_page_shows_every_needs_row(setup):
     w.open_settings()
     table = w.settings.table
     rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
-    assert rows <= table.viewport().height()
+    layout = w.settings.layout()
+    heights = [layout.itemAt(i).geometry().height() for i in range(layout.count())]
+    assert rows <= table.viewport().height(), f"settings rows are {heights} px tall"
     assert not table.verticalScrollBar().isVisible()
 
 
