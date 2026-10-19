@@ -55,6 +55,14 @@ MAC_KEYS = {
     0x52: "0", 0x53: "1", 0x54: "2", 0x55: "3", 0x56: "4", 0x57: "5", 0x58: "6", 0x59: "7",
     0x5B: "8", 0x5C: "9",  # keypad
 }
+IS_WINDOWS = sys.platform == "win32"
+# Windows virtual-key codes for letters and digits are the same whatever keyboard layout is on
+# (Thai included): A-Z and 0-9 are their ASCII codes, the keypad digits are 0x60-0x69.
+WINDOWS_KEYS = {
+    **{code: chr(code) for code in range(ord("A"), ord("Z") + 1)},
+    **{code: chr(code) for code in range(ord("0"), ord("9") + 1)},
+    **{0x60 + n: str(n) for n in range(10)},
+}
 SETTINGS_HINT_MIN_H = 30  # with a smaller bottom margin there is no room for the hint below the buttons
 
 
@@ -128,9 +136,10 @@ class MainWindow(QGraphicsView):
         self.keyboard_page.hide()
 
         # A quiet hint for the nurse in the strip below the buttons; Settings, Pause and calibration cover it.
-        self.settings_hint = QLabel(
-            "Caregiver: F2 recalibrate    F3 Settings    (hold fn on a Mac: fn + F2, fn + F3)", self.canvas
-        )
+        hint = "Caregiver: F2 recalibrate    F3 Settings"
+        if IS_MAC:
+            hint += "    (hold fn on a Mac: fn + F2, fn + F3)"
+        self.settings_hint = QLabel(hint, self.canvas)
         self.settings_hint.setFont(theme.font(22))
         self.settings_hint.setStyleSheet(f"color: {theme.TEXT_QUIET.name()}; background: transparent;")
         self.settings_hint.setAlignment(Qt.AlignCenter)
@@ -518,7 +527,7 @@ class MainWindow(QGraphicsView):
     # Caregiver keys
 
     def keyPressEvent(self, event) -> None:
-        """A caregiver can type on the Mac keyboard to fix what noisy gaze typed: letters, numbers,
+        """A caregiver can type on the computer's keyboard to fix what noisy gaze typed: letters, numbers,
         Space, Backspace (Delete), Shift+Backspace (Clear) and Enter (Speak). Calibration, Settings
         and the rest screen keep their own keys."""
         if self.calibration is not None or self.settings.isVisible() or self.paused:
@@ -542,7 +551,12 @@ class MainWindow(QGraphicsView):
             return self._on_speak
         if key == Qt.Key_Space:
             return lambda: self._on_letter(" ")
-        ch = MAC_KEYS.get(event.nativeVirtualKey()) if IS_MAC else None
+        if IS_MAC:
+            ch = MAC_KEYS.get(event.nativeVirtualKey())
+        elif IS_WINDOWS:
+            ch = WINDOWS_KEYS.get(event.nativeVirtualKey())
+        else:
+            ch = None
         if ch is None and (Qt.Key_A <= key <= Qt.Key_Z or Qt.Key_0 <= key <= Qt.Key_9):
             ch = chr(key)  # Qt key codes for A-Z and 0-9 are their ASCII codes
         if ch is not None:

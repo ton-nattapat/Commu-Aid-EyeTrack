@@ -354,6 +354,19 @@ def test_settings_keeps_a_saved_voice_that_is_not_installed(setup):
     assert w.settings.voice_value.text() == "Some Male Voice"
 
 
+def test_settings_on_windows_shows_the_thai_voice_that_will_speak(setup):
+    make, speaker = setup[0], setup[3]
+    speaker.engine = "sapi"
+    speaker.installed = ["Microsoft Pattara"]
+    w = make()
+    w.open_settings()  # config.yaml still names the Mac's Kanya
+    assert w.settings.voice_names == ["system", "Microsoft Pattara"]
+    assert w.settings.voice_value.text() == "Automatic"
+    w.cfg.speech.voice_th = "Pattara"
+    w.open_settings()
+    assert w.settings.voice_value.text() == "Microsoft Pattara"
+
+
 def test_settings_keeps_a_hand_tuned_filter_unless_steadiness_changes(setup, tmp_path):
     from commu_aid.gaze.filters import FixationFilter, OneEuroFilter
 
@@ -377,13 +390,30 @@ def test_settings_keeps_a_hand_tuned_filter_unless_steadiness_changes(setup, tmp
     assert w.cfg.gaze_filter.method == "fixation" and isinstance(w.smoother, FixationFilter)
 
 
+def test_hint_label_shrinks_its_font_to_fit_beside_the_buttons(app):
+    from commu_aid.ui.settings import HintLabel
+
+    hint = HintLabel("Stronger holds a shaky gaze still; lighter follows small moves. Recommended: High.", max_height=110)
+    hint.show()
+    hint.resize(160, 110)
+    app.processEvents()
+    assert hint.font().pixelSize() < 24
+    hint.resize(1200, 110)
+    app.processEvents()
+    assert hint.font().pixelSize() == 24
+    hint.close()
+
+
 def test_settings_page_shows_every_needs_row(setup):
     make = setup[0]
     w = make()
     w.open_settings()
     table = w.settings.table
     rows = sum(table.rowHeight(r) for r in range(table.rowCount()))
-    assert rows <= table.viewport().height()
+    layout = w.settings.layout()
+    heights = [layout.itemAt(i).geometry().height() for i in range(layout.count())]
+    assert rows <= table.viewport().height(), f"settings rows are {heights} px tall"
+    assert max(heights[1:5]) <= 110  # a long hint shrinks its font instead of making its row taller
     assert not table.verticalScrollBar().isVisible()
 
 
@@ -857,6 +887,19 @@ def test_mac_keys_type_letters_even_with_the_thai_keyboard_selected(setup, app, 
     for native, thai in ((0x04, "้"), (0x22, "ร"), (0x12, "ๅ")):
         w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, ord(thai), Qt.NoModifier, 0, native, 0, thai))
     assert w.typed == "HI1"
+
+
+def test_windows_keys_type_letters_even_with_the_thai_keyboard_selected(setup, app, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    monkeypatch.setattr(main_window, "IS_MAC", False)
+    monkeypatch.setattr(main_window, "IS_WINDOWS", True)
+    w = setup[0]()
+    # Windows reports the key's virtual-key code ('H', 'I', '1', keypad 7) whatever layout is on.
+    for native, thai in ((0x48, "้"), (0x49, "ร"), (0x31, "ๅ"), (0x67, "7")):
+        w.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, ord(thai), Qt.NoModifier, 0, native, 0, thai))
+    assert w.typed == "HI17"
 
 
 def test_settings_turn_edge_correction_off_and_on_without_recalibrating(setup, app, tmp_path):

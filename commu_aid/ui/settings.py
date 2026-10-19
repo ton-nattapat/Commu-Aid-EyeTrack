@@ -8,14 +8,15 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPainter
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QTableWidget,
     QTableWidgetItem,
@@ -98,6 +99,46 @@ class SliderTicks(QWidget):
             x = SLIDER_HANDLE / 2 + span * (v - lo) / max(hi - lo, 1)
             p.setPen(theme.HOVER if v == self.slider.value() else theme.TEXT_QUIET)
             p.drawText(int(x) - 60, 0, 120, self.height(), Qt.AlignCenter, seconds_text(v * DWELL_STEP_S))
+
+
+class HintLabel(QLabel):
+    """A grey, word-wrapped hint beside a row of big buttons. It never makes its row taller than
+    the buttons: when the text needs more lines than fit (wider fonts, e.g. Segoe UI on Windows),
+    the font shrinks instead."""
+
+    MIN_PX = 16
+
+    def __init__(self, text: str = "", size_px: int = 24, max_height: int = 0):
+        super().__init__(text)
+        self.size_px = size_px
+        self.setStyleSheet("color: #9aa5b1;")
+        self.setWordWrap(True)
+        self.setFont(theme.font(size_px))
+        if max_height:
+            self.setMaximumHeight(max_height)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+
+    def hasHeightForWidth(self) -> bool:
+        return False  # the row's height comes from the buttons, not from this text
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self._fit()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit()
+
+    def _fit(self) -> None:
+        w, h = self.width(), self.maximumHeight()
+        px = self.size_px
+        while px > self.MIN_PX:
+            box = QFontMetrics(theme.font(px)).boundingRect(QRect(0, 0, w, 100000), Qt.TextWordWrap, self.text())
+            if box.height() <= h:
+                break
+            px -= 1
+        if self.font().pixelSize() != px:
+            self.setFont(theme.font(px))
 
 
 class SettingsPage(QWidget):
@@ -186,10 +227,10 @@ class SettingsPage(QWidget):
         self.wobble_value.setFont(theme.font(40, bold=True))
         self.wobble_value.setMinimumWidth(200)
         self.wobble_value.setAlignment(Qt.AlignCenter)
-        wobble_hint = QLabel("Gaze may slip onto the next button this long and come back without starting over")
-        wobble_hint.setFont(theme.font(24))
-        wobble_hint.setStyleSheet("color: #9aa5b1;")
-        wobble_hint.setWordWrap(True)
+        wobble_hint = HintLabel(
+            "Gaze may slip onto the next button this long and come back without starting over",
+            max_height=STEP_BUTTON,
+        )
         wobble_row.addWidget(wobble_label)
         wobble_row.addWidget(self.wobble_less)
         wobble_row.addWidget(self.wobble_value)
@@ -212,10 +253,7 @@ class SettingsPage(QWidget):
         self.steady_value.setFont(theme.font(40, bold=True))
         self.steady_value.setMinimumWidth(200)
         self.steady_value.setAlignment(Qt.AlignCenter)
-        self.steady_hint = QLabel()
-        self.steady_hint.setFont(theme.font(24))
-        self.steady_hint.setStyleSheet("color: #9aa5b1;")
-        self.steady_hint.setWordWrap(True)
+        self.steady_hint = HintLabel(max_height=STEP_BUTTON)
         self.steady_reset = QPushButton("Recommended")
         self.steady_reset.clicked.connect(lambda: self._set_steadiness(STEADINESS_DEFAULT))
         steady_row.addWidget(steady_label)
@@ -227,7 +265,8 @@ class SettingsPage(QWidget):
         layout.addLayout(steady_row)
 
         # Speech: how fast the app speaks, and which Thai voice. "System voice" speaks with the
-        # Mac's System Voice, the only way to use a Siri voice from the app.
+        # Mac's System Voice, the only way to use a Siri voice from the app; on Windows it picks the
+        # first installed Thai voice.
         speech_row = QHBoxLayout()
         speech_row.setSpacing(theme.GAP)
         rate_label = QLabel("Speech speed")
@@ -373,21 +412,31 @@ class SettingsPage(QWidget):
         self.rate_more.setEnabled(self.rate < SPEECH_RATE_MAX)
 
     def _load_voices(self) -> None:
-        """System voice first, then the Mac's installed Thai voices, keeping the saved one even if it
+        """System voice first, then the installed Thai voices, keeping the saved one even if it
         is not installed (yet)."""
         names = self.speaker.voices("th") if self.speaker is not None else []
         current = self.cfg.speech.voice_th or SYSTEM_VOICE
         if current != SYSTEM_VOICE and current not in names:
-            names.append(current)
+            if getattr(self.speaker, "engine", "say") == "say":
+                names.append(current)
+            else:
+                # Windows picks the voice whose name contains the saved text, else the first Thai
+                # voice (e.g. for the Mac's Kanya); show the one that will speak.
+                current = next((n for n in names if current.lower() in n.lower()), SYSTEM_VOICE)
         self.voice_names = [SYSTEM_VOICE, *names]
         self._set_voice(self.voice_names.index(current))
 
     def _set_voice(self, index: int) -> None:
         self.voice_index = max(0, min(len(self.voice_names) - 1, index))
         name = self.voice_names[self.voice_index]
-        self.voice_value.setText("System voice" if name == SYSTEM_VOICE else name)
+        self.voice_value.setText(self._system_voice_label() if name == SYSTEM_VOICE else name)
         self.voice_prev.setEnabled(self.voice_index > 0)
         self.voice_next.setEnabled(self.voice_index < len(self.voice_names) - 1)
+
+    def _system_voice_label(self) -> str:
+        # On a Mac this is the System Voice; elsewhere the first installed Thai voice.
+        engine = getattr(self.speaker, "engine", "say")
+        return "System voice" if engine == "say" else "Automatic"
 
     def _try_voice(self) -> None:
         if self.speaker is not None:

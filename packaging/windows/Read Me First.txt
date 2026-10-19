@@ -1,0 +1,33 @@
+Communication Aid for Windows
+=============================
+
+Before the first start, on this PC:
+
+1. Tobii Pro Spark runtime
+   Download "Tobii Pro Spark runtime" for Windows from https://connect.tobii.com/s/spark-downloads
+   (free Tobii account) and install it. Plug the Spark's USB cable straight into the PC.
+
+2. Tobii Pro Eye Tracker Manager
+   Install it from https://www.tobii.com/products/software/applications-and-developer-kits/tobii-pro-eye-tracker-manager
+   Open it, choose the Spark, and run Display Setup: enter this monitor's size and where the
+   tracker is mounted. (The app does its own calibration at every start.)
+
+3. Thai voice
+   Settings > Time & language > Language & region > Add a language > Thai. Tick "Text-to-speech"
+   (Speech) when it offers the optional features. This installs the voice Microsoft Pattara.
+   Restart the PC afterwards.
+
+4. Internet for the first start
+   The first start downloads the English-to-Thai translation model (about 2.5 GB). After that the
+   app works offline.
+
+Starting the app
+   Start menu > Communication Aid. Windows may say "Windows protected your PC" because the app is
+   not signed: click "More info", then "Run anyway". It asks only once.
+   No eye tracker? Start menu > "Communication Aid (mouse, no eye tracker)".
+
+Caregiver keys: F2 recalibrate, F3 Settings, F4 pause / resume, Ctrl+G gaze dot,
+F11 full screen, Ctrl+Q quit. On laptops whose F keys control volume or brightness, hold Fn.
+
+Settings, calibration and the log file are kept in %USERPROFILE%\.commu_aid (app.log there helps
+when something goes wrong).

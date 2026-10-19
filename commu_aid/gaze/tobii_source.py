@@ -69,12 +69,11 @@ class TobiiGazeSource(GazeSource):
             if not trackers:
                 raise TrackerNotFound(
                     "No Tobii eye tracker found.\n\n"
-                    "1. Plug the tracker's USB-A cable straight into the Mac (Tobii's USB-C adapter is fine, "
-                    "a hub or monitor port often is not), then unplug and replug it.\n"
-                    "2. Open Tobii Pro Eye Tracker Manager. If the Spark is not listed, press + to install its driver, "
-                    "or install the Spark runtime from connect.tobii.com/s/spark-downloads.\n"
-                    "3. For details, run python -m commu_aid.check_tracker in Terminal (in the Mac app, "
-                    "click Show Details below)."
+                    "1. Plug the tracker's USB-A cable straight into the computer (Tobii's USB-C adapter is "
+                    "fine, a hub or monitor port often is not), then unplug and replug it.\n"
+                    "2. Install the Tobii Pro Spark runtime from connect.tobii.com/s/spark-downloads, or open "
+                    "Tobii Pro Eye Tracker Manager and install the driver it offers for the Spark.\n"
+                    "3. For details, click Show Details below (or run python -m commu_aid.check_tracker)."
                 )
             eyetracker = trackers[0]
         self.eyetracker = eyetracker

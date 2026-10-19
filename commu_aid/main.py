@@ -21,7 +21,7 @@ from pathlib import Path
 DEFAULT_CONFIG = Path(__file__).resolve().parent.parent / "config.yaml"
 USER_DIR = Path("~/.commu_aid").expanduser()
 
-# True inside the packaged Mac app (PyInstaller), where the bundle itself is read-only.
+# True inside the packaged Mac or Windows app (PyInstaller), where the bundle itself is read-only.
 FROZEN = getattr(sys, "frozen", False)
 
 
@@ -42,7 +42,7 @@ def default_config_path(frozen: bool = FROZEN, bundled: Path = DEFAULT_CONFIG, u
 
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(prog="commu_aid", description="Eye-tracking communication aid")
-    ap.add_argument("--config", type=Path, help="settings file (default: config.yaml; the Mac app uses ~/.commu_aid/config.yaml)")
+    ap.add_argument("--config", type=Path, help="settings file (default: config.yaml; the packaged app uses ~/.commu_aid/config.yaml)")
     ap.add_argument("--mouse", action="store_true", help="use the mouse instead of the eye tracker")
     ap.add_argument(
         "--simulate", nargs="?", const="typical", choices=("mild", "typical", "hard", "edges"), metavar="LEVEL",
@@ -66,7 +66,7 @@ def main(argv=None) -> int:
         return check_tracker()
     handlers = [logging.StreamHandler()]
     if FROZEN:
-        # Opened from Finder there is no terminal, so keep a log next to the other app files.
+        # Opened from Finder or the Start menu there is no terminal, so keep a log next to the other app files.
         USER_DIR.mkdir(parents=True, exist_ok=True)
         handlers.append(logging.FileHandler(USER_DIR / "app.log", mode="w", encoding="utf-8"))
     logging.basicConfig(
