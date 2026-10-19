@@ -390,6 +390,20 @@ def test_settings_keeps_a_hand_tuned_filter_unless_steadiness_changes(setup, tmp
     assert w.cfg.gaze_filter.method == "fixation" and isinstance(w.smoother, FixationFilter)
 
 
+def test_hint_label_shrinks_its_font_to_fit_beside_the_buttons(app):
+    from commu_aid.ui.settings import HintLabel
+
+    hint = HintLabel("Stronger holds a shaky gaze still; lighter follows small moves. Recommended: High.", max_height=110)
+    hint.show()
+    hint.resize(160, 110)
+    app.processEvents()
+    assert hint.font().pixelSize() < 24
+    hint.resize(1200, 110)
+    app.processEvents()
+    assert hint.font().pixelSize() == 24
+    hint.close()
+
+
 def test_settings_page_shows_every_needs_row(setup):
     make = setup[0]
     w = make()
@@ -399,6 +413,7 @@ def test_settings_page_shows_every_needs_row(setup):
     layout = w.settings.layout()
     heights = [layout.itemAt(i).geometry().height() for i in range(layout.count())]
     assert rows <= table.viewport().height(), f"settings rows are {heights} px tall"
+    assert max(heights[1:5]) <= 110  # a long hint shrinks its font instead of making its row taller
     assert not table.verticalScrollBar().isVisible()
 
 

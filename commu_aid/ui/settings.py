@@ -8,14 +8,15 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPainter
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QTableWidget,
     QTableWidgetItem,
@@ -98,6 +99,46 @@ class SliderTicks(QWidget):
             x = SLIDER_HANDLE / 2 + span * (v - lo) / max(hi - lo, 1)
             p.setPen(theme.HOVER if v == self.slider.value() else theme.TEXT_QUIET)
             p.drawText(int(x) - 60, 0, 120, self.height(), Qt.AlignCenter, seconds_text(v * DWELL_STEP_S))
+
+
+class HintLabel(QLabel):
+    """A grey, word-wrapped hint beside a row of big buttons. It never makes its row taller than
+    the buttons: when the text needs more lines than fit (wider fonts, e.g. Segoe UI on Windows),
+    the font shrinks instead."""
+
+    MIN_PX = 16
+
+    def __init__(self, text: str = "", size_px: int = 24, max_height: int = 0):
+        super().__init__(text)
+        self.size_px = size_px
+        self.setStyleSheet("color: #9aa5b1;")
+        self.setWordWrap(True)
+        self.setFont(theme.font(size_px))
+        if max_height:
+            self.setMaximumHeight(max_height)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
+
+    def hasHeightForWidth(self) -> bool:
+        return False  # the row's height comes from the buttons, not from this text
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self._fit()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit()
+
+    def _fit(self) -> None:
+        w, h = self.width(), self.maximumHeight()
+        px = self.size_px
+        while px > self.MIN_PX:
+            box = QFontMetrics(theme.font(px)).boundingRect(QRect(0, 0, w, 100000), Qt.TextWordWrap, self.text())
+            if box.height() <= h:
+                break
+            px -= 1
+        if self.font().pixelSize() != px:
+            self.setFont(theme.font(px))
 
 
 class SettingsPage(QWidget):
@@ -186,10 +227,10 @@ class SettingsPage(QWidget):
         self.wobble_value.setFont(theme.font(40, bold=True))
         self.wobble_value.setMinimumWidth(200)
         self.wobble_value.setAlignment(Qt.AlignCenter)
-        wobble_hint = QLabel("Gaze may slip onto the next button this long and come back without starting over")
-        wobble_hint.setFont(theme.font(24))
-        wobble_hint.setStyleSheet("color: #9aa5b1;")
-        wobble_hint.setWordWrap(True)
+        wobble_hint = HintLabel(
+            "Gaze may slip onto the next button this long and come back without starting over",
+            max_height=STEP_BUTTON,
+        )
         wobble_row.addWidget(wobble_label)
         wobble_row.addWidget(self.wobble_less)
         wobble_row.addWidget(self.wobble_value)
@@ -212,10 +253,7 @@ class SettingsPage(QWidget):
         self.steady_value.setFont(theme.font(40, bold=True))
         self.steady_value.setMinimumWidth(200)
         self.steady_value.setAlignment(Qt.AlignCenter)
-        self.steady_hint = QLabel()
-        self.steady_hint.setFont(theme.font(24))
-        self.steady_hint.setStyleSheet("color: #9aa5b1;")
-        self.steady_hint.setWordWrap(True)
+        self.steady_hint = HintLabel(max_height=STEP_BUTTON)
         self.steady_reset = QPushButton("Recommended")
         self.steady_reset.clicked.connect(lambda: self._set_steadiness(STEADINESS_DEFAULT))
         steady_row.addWidget(steady_label)
